@@ -1,0 +1,8 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+# WASM ビルド生成物（build:wasm で再生成される）
+public/wasm
+public/assets

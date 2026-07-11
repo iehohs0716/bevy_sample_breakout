@@ -1,0 +1,6 @@
+# dev 用: `cargo run --target wasm32-unknown-unknown` でエンジン単体を
+# ローカルサーバー上に立ち上げて素早くブラウザ確認するための設定。
+# React への埋め込みは frontend/scripts/build-wasm.sh (wasm-bindgen) を使う。
+# wasm-server-runner が未導入の場合: `cargo install wasm-server-runner`
+[target.wasm32-unknown-unknown]
+runner = "wasm-server-runner"
