@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = "0.19.0"
+# 背景画像は png に加えて jpeg / webp もデコードできるようにする（default features は維持）。
+# React が渡す背景画像（S3 等の CORS 許可済みホスト配信）にこれらの形式を使えるようにするため。
+bevy = { version = "0.19.0", features = ["jpeg", "webp"] }
 
 # WASM ビルド時のみ、JS 側（React）が window に載せた設定を読むために使う。
 # React が fetch した背景画像のバイト列を受け取り、Bevy で `Image` にデコードする。
