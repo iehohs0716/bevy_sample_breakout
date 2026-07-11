@@ -6,6 +6,14 @@ edition = "2024"
 [dependencies]
 bevy = "0.19.0"
 
+# WASM ビルド時のみ、JS 側（React）が window に載せた設定を読むために使う。
+# React が fetch した背景画像のバイト列を受け取り、Bevy で `Image` にデコードする。
+# ネイティブビルドには含めない（`#[cfg(target_arch = "wasm32")]` で分岐）。
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window"] }
+
 # WASM の配信サイズを抑えるための最適化。start が速くなり帯域も節約できる。
 [profile.release]
 opt-level = "s"

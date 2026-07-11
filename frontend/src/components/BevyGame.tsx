@@ -3,6 +3,16 @@ import { useEffect, useRef } from "react";
 type BevyGameProps = {
   width?: number;
   height?: number;
+  /**
+   * 背景画像の URL。同一オリジンの相対パス（例: `/assets/backgrounds/sample_sunset.png`）でも、
+   * 外部の絶対 URL（例: `https://cdn.example.com/bg/xxx.png`）でも指定できる。
+   *
+   * ここで渡した画像を React 側が fetch し、バイト列を WASM(Bevy) に引き渡す。これにより
+   * ゲーム本体（Rust/WASM）は 1 つのビルドのまま、サービスごとに背景だけを差し替えられる。
+   * 外部 URL を使う場合、配信元が CORS を許可している必要がある（ブラウザの fetch を通すため）。
+   * 未指定の場合は Bevy 側にバンドルされたデフォルト背景が使われる。
+   */
+  background?: string;
 };
 
 /**
@@ -11,8 +21,12 @@ type BevyGameProps = {
  * wasm-bindgen(`--target web`) が public/wasm/ に出力する JS グルー(`breakout.js`)を
  * 実行時に動的 import し、default export の init() を呼ぶと Bevy が起動して
  * `#bevy-canvas` に描画する。
+ *
+ * `background` が指定されていれば、init() の前にその画像を fetch して
+ * `window.__BREAKOUT_CONFIG__.backgroundBytes`(Uint8Array) に載せる。Bevy 側(Rust)は
+ * 起動時にこれを読み、`Image::from_buffer` でデコードして背景スプライトに使う。
  */
-export function BevyGame({ width = 900, height = 600 }: BevyGameProps) {
+export function BevyGame({ width = 900, height = 600, background }: BevyGameProps) {
   // React StrictMode は開発時に effect を2回実行する。Bevy(winit) は二重初期化で
   // パニックするため、ref ガードで一度だけ起動する。
   const startedRef = useRef(false);
@@ -26,6 +40,35 @@ export function BevyGame({ width = 900, height = 600 }: BevyGameProps) {
     startedRef.current = true;
 
     (async () => {
+      // 背景画像を React 側で先に fetch し、バイト列を window のグローバル設定に載せる。
+      // Bevy(WASM) の起動時(main)にこれを読むので、必ず init() より前に行う。
+      // fetch に失敗した場合は Bevy 側のデフォルト背景にフォールバックさせる（致命ではない）。
+      if (background) {
+        try {
+          const res = await fetch(background);
+          if (!res.ok) {
+            throw new Error(`背景画像の取得に失敗: ${res.status} ${res.statusText}`);
+          }
+          const buf = await res.arrayBuffer();
+          const w = window as typeof window & {
+            __BREAKOUT_CONFIG__?: {
+              backgroundBytes?: Uint8Array;
+              backgroundMime?: string;
+            };
+          };
+          w.__BREAKOUT_CONFIG__ = {
+            backgroundBytes: new Uint8Array(buf),
+            // フォーマット判定用の MIME（例: "image/png"）。取得できなければ Bevy 側は png とみなす。
+            backgroundMime: res.headers.get("content-type") ?? undefined,
+          };
+        } catch (error) {
+          console.warn(
+            "背景画像の取得に失敗しました。デフォルト背景で起動します。",
+            error,
+          );
+        }
+      }
+
       // public 配下の生成物なので Vite のモジュール解決を通さず、実行時に完全な
       // 絶対 URL を組み立てて外部モジュールとして import する（@vite-ignore で警告抑制）。
       // これにより Vite の「/public を import 不可」ガードを回避する。dev/本番とも
@@ -54,7 +97,7 @@ export function BevyGame({ width = 900, height = 600 }: BevyGameProps) {
         }
       });
     })();
-  }, []);
+  }, [background]);
 
   return <canvas id="bevy-canvas" width={width} height={height} />;
 }

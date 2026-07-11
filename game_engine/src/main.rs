@@ -40,9 +40,13 @@ const GAP_BETWEEN_BRICKS_AND_SIDES: f32 = 20.0;
 const SCOREBOARD_FONT_SIZE: FontSize = FontSize::Px(33.0);
 const SCOREBOARD_TEXT_PADDING: Val = Val::Px(5.0);
 
-// 背景画像のパス（AssetServer 基準。Web では `/assets/` 配下、ネイティブでは
-// `game_engine/assets/` 配下を指す）。この画像ファイルを差し替えると背景が変わる。
-// 将来 S3 等の外部 URL に切り替える場合はここを変更する（web は bevy_web_asset 等が必要）。
+// 背景画像のデフォルトパス（AssetServer 基準。Web では `/assets/` 配下、ネイティブでは
+// `game_engine/assets/` 配下を指す）。
+//
+// Web ビルドでは、React 側が `window.__BREAKOUT_CONFIG__.backgroundBytes` に
+// fetch 済みの画像バイト列（Uint8Array）を載せていれば、それを優先して背景に使う。
+// これにより「アプリのコードは1つ」のまま、サービスごとに（S3 等の任意 URL の画像でも）
+// 背景だけを差し替えられる。React 側が bytes を渡さない場合はこのデフォルトにフォールバックする。
 const BACKGROUND_IMAGE_PATH: &str = "backgrounds/background.png";
 // 背景スプライトの表示サイズ（アリーナ全体を覆う）。
 const BACKGROUND_SIZE: Vec2 = Vec2::new(RIGHT_WALL - LEFT_WALL, TOP_WALL - BOTTOM_WALL);
@@ -56,8 +60,69 @@ const WALL_COLOR: Color = Color::srgb(0.8, 0.8, 0.8);
 const TEXT_COLOR: Color = Color::srgb(0.5, 0.5, 1.0);
 const SCORE_COLOR: Color = Color::srgb(1.0, 0.5, 0.5);
 
+// React（JS）から渡された背景画像を一時的に保持する Resource。
+// `setup` で取り出して `Assets<Image>` に登録し、背景スプライトに使う。
+// `None` の場合は `BACKGROUND_IMAGE_PATH` のデフォルト画像にフォールバックする。
+#[derive(Resource, Default)]
+struct BackgroundOverride(Option<Image>);
+
+/// Web ビルド専用。`window.__BREAKOUT_CONFIG__.backgroundBytes`（React が fetch した
+/// 画像バイト列 = Uint8Array）を読み、`Image` にデコードして返す。
+/// 設定が無い / 読めない / デコード失敗の場合は `None`（デフォルト背景にフォールバック）。
+#[cfg(target_arch = "wasm32")]
+fn injected_background_image() -> Option<Image> {
+    use bevy::{
+        asset::RenderAssetUsages,
+        image::{CompressedImageFormats, ImageSampler, ImageType},
+    };
+    use wasm_bindgen::{JsCast, JsValue};
+
+    let window = web_sys::window()?;
+    let config = js_sys::Reflect::get(&window, &JsValue::from_str("__BREAKOUT_CONFIG__")).ok()?;
+    if config.is_undefined() || config.is_null() {
+        return None;
+    }
+
+    let bytes_val = js_sys::Reflect::get(&config, &JsValue::from_str("backgroundBytes")).ok()?;
+    let bytes = bytes_val.dyn_into::<js_sys::Uint8Array>().ok()?.to_vec();
+    if bytes.is_empty() {
+        return None;
+    }
+
+    // 画像フォーマットは MIME で受け取れれば使い、無ければ拡張子 png とみなす。
+    let mime = js_sys::Reflect::get(&config, &JsValue::from_str("backgroundMime"))
+        .ok()
+        .and_then(|v| v.as_string());
+    let image_type = match mime.as_deref() {
+        Some(m) if !m.is_empty() => ImageType::MimeType(m),
+        _ => ImageType::Extension("png"),
+    };
+
+    match Image::from_buffer(
+        &bytes,
+        image_type,
+        CompressedImageFormats::NONE,
+        true,
+        ImageSampler::Default,
+        RenderAssetUsages::default(),
+    ) {
+        Ok(image) => Some(image),
+        Err(err) => {
+            warn!("背景画像のデコードに失敗しました。デフォルト背景を使用します: {err}");
+            None
+        }
+    }
+}
+
+/// ネイティブビルドでは JS からの注入は無い（常にデフォルト背景を使う）。
+#[cfg(not(target_arch = "wasm32"))]
+fn injected_background_image() -> Option<Image> {
+    None
+}
+
 fn main() {
     App::new()
+        .insert_resource(BackgroundOverride(injected_background_image()))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 // Web ビルド時はこの ID の canvas 要素に描画する。
@@ -185,18 +250,25 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+    mut background_override: ResMut<BackgroundOverride>,
     asset_server: Res<AssetServer>,
 ) {
     // Camera
     commands.spawn(Camera2d);
 
     // Background image
-    // `BACKGROUND_IMAGE_PATH` の画像を盤面全体を覆うスプライトとして描画する。
+    // React（JS）が背景画像バイト列を渡していれば、それをデコード済みの `Image` として
+    // `Assets<Image>` に登録してハンドルを得る。渡されていなければ `BACKGROUND_IMAGE_PATH`
+    // のデフォルト画像を AssetServer 経由でロードする。
     // z を負にして他の要素（壁・ブロック・ボール）より後ろに配置する。
-    // 画像ファイルを差し替えれば（Web は dev の自動リロード / 本番はリロードで）背景が変わる。
+    let background_handle = match background_override.0.take() {
+        Some(image) => images.add(image),
+        None => asset_server.load(BACKGROUND_IMAGE_PATH),
+    };
     commands.spawn((
         Sprite {
-            image: asset_server.load(BACKGROUND_IMAGE_PATH),
+            image: background_handle,
             custom_size: Some(BACKGROUND_SIZE),
             ..default()
         },
