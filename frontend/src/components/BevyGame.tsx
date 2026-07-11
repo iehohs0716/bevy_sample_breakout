@@ -97,7 +97,12 @@ export function BevyGame({ width = 900, height = 600, background }: BevyGameProp
         }
       });
     })();
-  }, [background]);
+    // 依存配列は空にする。背景は起動時に一度だけ読む値であり、Bevy(winit) は
+    // 再初期化・破棄ができないため、background が後から変わっても再起動しない
+    // （初回マウント時の値で固定される）。effect 内で background を参照しているので
+    // exhaustive-deps は警告するが、上記の理由で意図的に無視する。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return <canvas id="bevy-canvas" width={width} height={height} />;
 }
