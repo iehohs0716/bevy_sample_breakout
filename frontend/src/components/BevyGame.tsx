@@ -28,6 +28,14 @@ type BevyGameProps = {
    * `bricks` を渡しつつ `cellSize` を省いた場合は Bevy 側のデフォルトサイズ（50x30）になる。
    */
   cellSize?: { width: number; height: number };
+  /**
+   * ブロックの見た目に使う画像の URL 群（2 種類想定）。背景と同様に React 側が fetch し、
+   * バイト列を WASM(Bevy) に渡す。各ブロックには生成順に、この配列の先頭から順番へ
+   * （個数を超えたら折り返して）画像が割り当てられる（例: 2 枚なら交互に並ぶ）。
+   * 同一オリジンの相対パスでも外部の絶対 URL でも指定可能（外部 URL は配信元の CORS 許可が必要）。
+   * 未指定 / 全 fetch 失敗なら Bevy 側の単色ブロックにフォールバックする。
+   */
+  brickImages?: string[];
 };
 
 /**
@@ -47,6 +55,7 @@ export function BevyGame({
   background,
   bricks,
   cellSize,
+  brickImages,
 }: BevyGameProps) {
   // React StrictMode は開発時に effect を2回実行する。Bevy(winit) は二重初期化で
   // パニックするため、ref ガードで一度だけ起動する。
@@ -69,6 +78,7 @@ export function BevyGame({
         backgroundMime?: string;
         bricks?: Array<{ x: number; y: number }>;
         cellSize?: { width: number; height: number };
+        brickImages?: Array<{ bytes: Uint8Array; mime?: string }>;
       } = {};
 
       // 背景画像は React 側で先に fetch し、バイト列を渡す。
@@ -96,6 +106,35 @@ export function BevyGame({
         config.bricks = bricks;
         if (cellSize) {
           config.cellSize = cellSize;
+        }
+      }
+
+      // ブロック用の画像（2 種類想定）。背景と同様に React 側で fetch してバイト列を渡す。
+      // 一部の fetch が失敗しても、成功したぶんだけ渡す（全滅時は単色ブロックにフォールバック）。
+      if (brickImages && brickImages.length > 0) {
+        const fetched: Array<{ bytes: Uint8Array; mime?: string }> = [];
+        for (const url of brickImages) {
+          try {
+            const res = await fetch(url);
+            if (!res.ok) {
+              throw new Error(
+                `ブロック画像の取得に失敗: ${res.status} ${res.statusText}`,
+              );
+            }
+            const buf = await res.arrayBuffer();
+            fetched.push({
+              bytes: new Uint8Array(buf),
+              mime: res.headers.get("content-type") ?? undefined,
+            });
+          } catch (error) {
+            console.warn(
+              `ブロック画像の取得に失敗しました（${url}）。この画像はスキップします。`,
+              error,
+            );
+          }
+        }
+        if (fetched.length > 0) {
+          config.brickImages = fetched;
         }
       }
 
