@@ -29,13 +29,13 @@ const RIGHT_WALL: f32 = 450.;
 const BOTTOM_WALL: f32 = -300.;
 const TOP_WALL: f32 = 300.;
 
-const BRICK_SIZE: Vec2 = Vec2::new(100., 30.);
+const BRICK_SIZE: Vec2 = Vec2::new(50., 30.);
 // These values are exact
 const GAP_BETWEEN_PADDLE_AND_BRICKS: f32 = 270.0;
-const GAP_BETWEEN_BRICKS: f32 = 5.0;
+const GAP_BETWEEN_BRICKS: f32 = 0.0;
 // These values are lower bounds, as the number of bricks is computed
-const GAP_BETWEEN_BRICKS_AND_CEILING: f32 = 20.0;
-const GAP_BETWEEN_BRICKS_AND_SIDES: f32 = 20.0;
+const GAP_BETWEEN_BRICKS_AND_CEILING: f32 = 0.0;
+const GAP_BETWEEN_BRICKS_AND_SIDES: f32 = 0.0;
 
 const SCOREBOARD_FONT_SIZE: FontSize = FontSize::Px(33.0);
 const SCOREBOARD_TEXT_PADDING: Val = Val::Px(5.0);
@@ -120,9 +120,111 @@ fn injected_background_image() -> Option<Image> {
     None
 }
 
+// React（JS）から渡された「初期ブロック配置」。座標は Bevy ワールド座標
+// （中心原点・y 上向き・1 単位 = 1px。アリーナは x∈[LEFT_WALL, RIGHT_WALL],
+// y∈[BOTTOM_WALL, TOP_WALL]）で、各ブロックの *中心* 位置を表す。
+// `cell_size` は全ブロック共通のセルの大きさ（幅・高さ）。
+struct BrickLayout {
+    positions: Vec<Vec2>,
+    cell_size: Vec2,
+}
+
+// React（JS）から渡された初期ブロック配置を一時的に保持する Resource。
+// `setup` で取り出してブロックを spawn する。`None` の場合は従来どおり
+// アリーナを敷き詰めるデフォルト配置にフォールバックする。
+#[derive(Resource, Default)]
+struct BrickLayoutOverride(Option<BrickLayout>);
+
+/// Web ビルド専用。`window.__BREAKOUT_CONFIG__.bricks`（`[{x, y}, ...]` の配列）と
+/// `.cellSize`（`{width, height}`）を読み、初期ブロック配置として返す。
+/// - `bricks` が無い / 空 / 各要素に x,y が無い場合は `None`（デフォルト配置にフォールバック）。
+/// - `cellSize` が無い / 不正な場合はデフォルトの `BRICK_SIZE` を使う。
+#[cfg(target_arch = "wasm32")]
+fn injected_brick_layout() -> Option<BrickLayout> {
+    use wasm_bindgen::{JsCast, JsValue};
+
+    let window = web_sys::window()?;
+    let config = js_sys::Reflect::get(&window, &JsValue::from_str("__BREAKOUT_CONFIG__")).ok()?;
+    if config.is_undefined() || config.is_null() {
+        return None;
+    }
+
+    let bricks_val = js_sys::Reflect::get(&config, &JsValue::from_str("bricks")).ok()?;
+    let bricks_arr = bricks_val.dyn_into::<js_sys::Array>().ok()?;
+    if bricks_arr.length() == 0 {
+        return None;
+    }
+
+    let mut positions = Vec::with_capacity(bricks_arr.length() as usize);
+    for i in 0..bricks_arr.length() {
+        let brick = bricks_arr.get(i);
+        let x = js_sys::Reflect::get(&brick, &JsValue::from_str("x"))
+            .ok()
+            .and_then(|v| v.as_f64());
+        let y = js_sys::Reflect::get(&brick, &JsValue::from_str("y"))
+            .ok()
+            .and_then(|v| v.as_f64());
+        match (x, y) {
+            (Some(x), Some(y)) => positions.push(Vec2::new(x as f32, y as f32)),
+            _ => warn!("ブロック配置の要素 {i} に数値の x/y が無いためスキップします"),
+        }
+    }
+    if positions.is_empty() {
+        return None;
+    }
+
+    // セルの大きさ。指定が無い / 不正な場合はデフォルトの BRICK_SIZE にフォールバック。
+    let cell_size = js_sys::Reflect::get(&config, &JsValue::from_str("cellSize"))
+        .ok()
+        .filter(|v| !v.is_undefined() && !v.is_null())
+        .and_then(|cell| {
+            let w = js_sys::Reflect::get(&cell, &JsValue::from_str("width"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let h = js_sys::Reflect::get(&cell, &JsValue::from_str("height"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            match (w, h) {
+                (Some(w), Some(h)) if w > 0.0 && h > 0.0 => Some(Vec2::new(w as f32, h as f32)),
+                _ => None,
+            }
+        })
+        .unwrap_or(BRICK_SIZE);
+
+    Some(BrickLayout {
+        positions,
+        cell_size,
+    })
+}
+
+/// ネイティブビルドでは JS からの注入は無い（常にデフォルト配置を使う）。
+#[cfg(not(target_arch = "wasm32"))]
+fn injected_brick_layout() -> Option<BrickLayout> {
+    None
+}
+
+/// 1 つのブロックを spawn する。`position` はワールド座標での中心、`size` はセルの大きさ。
+/// デフォルト配置と JS 注入配置の双方から使い、spawn ロジックを一本化する。
+fn spawn_brick(commands: &mut Commands, position: Vec2, size: Vec2) {
+    commands.spawn((
+        Sprite {
+            color: BRICK_COLOR,
+            ..default()
+        },
+        Transform {
+            translation: position.extend(0.0),
+            scale: size.extend(1.0),
+            ..default()
+        },
+        Brick,
+        Collider,
+    ));
+}
+
 fn main() {
     App::new()
         .insert_resource(BackgroundOverride(injected_background_image()))
+        .insert_resource(BrickLayoutOverride(injected_brick_layout()))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 // Web ビルド時はこの ID の canvas 要素に描画する。
@@ -252,6 +354,7 @@ fn setup(
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut images: ResMut<Assets<Image>>,
     mut background_override: ResMut<BackgroundOverride>,
+    mut brick_layout_override: ResMut<BrickLayoutOverride>,
     asset_server: Res<AssetServer>,
 ) {
     // Camera
@@ -335,6 +438,15 @@ fn setup(
     commands.spawn(Wall::new(WallLocation::Top));
 
     // Bricks
+    // React（JS）が初期ブロック配置を渡していれば、それを使って spawn する。
+    // 渡されていなければ、従来どおりアリーナを敷き詰めるデフォルト配置を計算して使う。
+    if let Some(layout) = brick_layout_override.0.take() {
+        for position in &layout.positions {
+            spawn_brick(&mut commands, *position, layout.cell_size);
+        }
+        return;
+    }
+
     let total_width_of_bricks = (RIGHT_WALL - LEFT_WALL) - 2. * GAP_BETWEEN_BRICKS_AND_SIDES;
     let bottom_edge_of_bricks = paddle_y + GAP_BETWEEN_PADDLE_AND_BRICKS;
     let total_height_of_bricks = TOP_WALL - bottom_edge_of_bricks - GAP_BETWEEN_BRICKS_AND_CEILING;
@@ -368,20 +480,7 @@ fn setup(
                 offset_y + row as f32 * (BRICK_SIZE.y + GAP_BETWEEN_BRICKS),
             );
 
-            // brick
-            commands.spawn((
-                Sprite {
-                    color: BRICK_COLOR,
-                    ..default()
-                },
-                Transform {
-                    translation: brick_position.extend(0.0),
-                    scale: Vec3::new(BRICK_SIZE.x, BRICK_SIZE.y, 1.0),
-                    ..default()
-                },
-                Brick,
-                Collider,
-            ));
+            spawn_brick(&mut commands, brick_position, BRICK_SIZE);
         }
     }
 }

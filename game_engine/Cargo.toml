@@ -4,9 +4,22 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# 背景画像は png に加えて jpeg / webp もデコードできるようにする（default features は維持）。
-# React が渡す背景画像（S3 等の CORS 許可済みホスト配信）にこれらの形式を使えるようにするため。
-bevy = { version = "0.19.0", features = ["jpeg", "webp"] }
+# 2D ブロック崩しに必要な機能だけを有効化し、3D(pbr/light/atmosphere/ssao/meshlet/solari 等)を
+# 丸ごと落として WASM サイズを削る。`default-features = false` にして必要なプロファイル/機能のみ拾う。
+#   - 2d      : Camera2d / Sprite / Mesh2d / ColorMaterial + レンダリング。
+#               `default_platform` 経由で default_font(スコア表示用フォント) と webgl2 も入る。
+#   - ui      : スコア表示の Node / Text レイアウト。
+#   - audio   : 衝突音(AudioPlayer / .ogg)。`vorbis` を内包。
+#   - png     : デフォルト背景 background.png（画像フォーマットはプロファイルに含まれないため明示）。
+#   - jpeg/webp: React が渡す外部背景（S3 等の CORS 許可済みホスト配信）用。
+bevy = { version = "0.19.0", default-features = false, features = [
+    "2d",
+    "ui",
+    "audio",
+    "png",
+    "jpeg",
+    "webp",
+] }
 
 # WASM ビルド時のみ、JS 側（React）が window に載せた設定を読むために使う。
 # React が fetch した背景画像のバイト列を受け取り、Bevy で `Image` にデコードする。
@@ -18,6 +31,8 @@ web-sys = { version = "0.3", features = ["Window"] }
 
 # WASM の配信サイズを抑えるための最適化。start が速くなり帯域も節約できる。
 [profile.release]
-opt-level = "s"
+opt-level = "s"       # サイズ優先。"z" も要検討だが cheatbook 曰く実測で決めるべき。
 lto = true
 codegen-units = 1
+panic = "abort"       # パニック巻き戻し機構を削除（Bevy は unwind 不要）→ サイズ減。
+strip = true          # シンボル情報を除去。

@@ -13,6 +13,21 @@ type BevyGameProps = {
    * 未指定の場合は Bevy 側にバンドルされたデフォルト背景が使われる。
    */
   background?: string;
+  /**
+   * 初期ブロック配置。各ブロックの中心座標を Bevy のワールド座標で指定する。
+   * 座標系は「中心原点・y 上向き・1 単位 = 1px」で、アリーナは x∈[-450, 450],
+   * y∈[-300, 300]（画面中央が原点、上が +y）。背景と同様に起動時に一度だけ
+   * `window.__BREAKOUT_CONFIG__` 経由で WASM(Bevy) に渡す。
+   * 未指定 / 空配列なら Bevy 側のデフォルト配置（アリーナ敷き詰め）にフォールバックする。
+   */
+  bricks?: Array<{ x: number; y: number }>;
+  /**
+   * `bricks` で配置したブロック共通のセルの大きさ（幅・高さ、px 相当）。
+   * `bricks` とセットで指定したときのみ効く（`cellSize` 単独では無視される。
+   * `bricks` 未指定時のデフォルト敷き詰め配置は Bevy 側の固定サイズ 50x30 を使うため）。
+   * `bricks` を渡しつつ `cellSize` を省いた場合は Bevy 側のデフォルトサイズ（50x30）になる。
+   */
+  cellSize?: { width: number; height: number };
 };
 
 /**
@@ -26,7 +41,13 @@ type BevyGameProps = {
  * `window.__BREAKOUT_CONFIG__.backgroundBytes`(Uint8Array) に載せる。Bevy 側(Rust)は
  * 起動時にこれを読み、`Image::from_buffer` でデコードして背景スプライトに使う。
  */
-export function BevyGame({ width = 900, height = 600, background }: BevyGameProps) {
+export function BevyGame({
+  width = 900,
+  height = 600,
+  background,
+  bricks,
+  cellSize,
+}: BevyGameProps) {
   // React StrictMode は開発時に effect を2回実行する。Bevy(winit) は二重初期化で
   // パニックするため、ref ガードで一度だけ起動する。
   const startedRef = useRef(false);
@@ -40,8 +61,17 @@ export function BevyGame({ width = 900, height = 600, background }: BevyGameProp
     startedRef.current = true;
 
     (async () => {
-      // 背景画像を React 側で先に fetch し、バイト列を window のグローバル設定に載せる。
-      // Bevy(WASM) の起動時(main)にこれを読むので、必ず init() より前に行う。
+      // React 側の初期化パラメータ（背景・初期ブロック配置）を window のグローバル設定に
+      // まとめて載せる。Bevy(WASM) は起動時(main)に一度だけこれを読むので、必ず init() より
+      // 前に用意する。個々の値が無ければ Bevy 側がそれぞれデフォルトにフォールバックする。
+      const config: {
+        backgroundBytes?: Uint8Array;
+        backgroundMime?: string;
+        bricks?: Array<{ x: number; y: number }>;
+        cellSize?: { width: number; height: number };
+      } = {};
+
+      // 背景画像は React 側で先に fetch し、バイト列を渡す。
       // fetch に失敗した場合は Bevy 側のデフォルト背景にフォールバックさせる（致命ではない）。
       if (background) {
         try {
@@ -50,17 +80,9 @@ export function BevyGame({ width = 900, height = 600, background }: BevyGameProp
             throw new Error(`背景画像の取得に失敗: ${res.status} ${res.statusText}`);
           }
           const buf = await res.arrayBuffer();
-          const w = window as typeof window & {
-            __BREAKOUT_CONFIG__?: {
-              backgroundBytes?: Uint8Array;
-              backgroundMime?: string;
-            };
-          };
-          w.__BREAKOUT_CONFIG__ = {
-            backgroundBytes: new Uint8Array(buf),
-            // フォーマット判定用の MIME（例: "image/png"）。取得できなければ Bevy 側は png とみなす。
-            backgroundMime: res.headers.get("content-type") ?? undefined,
-          };
+          config.backgroundBytes = new Uint8Array(buf);
+          // フォーマット判定用の MIME（例: "image/png"）。取得できなければ Bevy 側は png とみなす。
+          config.backgroundMime = res.headers.get("content-type") ?? undefined;
         } catch (error) {
           console.warn(
             "背景画像の取得に失敗しました。デフォルト背景で起動します。",
@@ -68,6 +90,19 @@ export function BevyGame({ width = 900, height = 600, background }: BevyGameProp
           );
         }
       }
+
+      // 初期ブロック配置。指定があれば渡す。無ければ Bevy 側のデフォルト配置になる。
+      if (bricks && bricks.length > 0) {
+        config.bricks = bricks;
+        if (cellSize) {
+          config.cellSize = cellSize;
+        }
+      }
+
+      const w = window as typeof window & {
+        __BREAKOUT_CONFIG__?: typeof config;
+      };
+      w.__BREAKOUT_CONFIG__ = config;
 
       // public 配下の生成物なので Vite のモジュール解決を通さず、実行時に完全な
       // 絶対 URL を組み立てて外部モジュールとして import する（@vite-ignore で警告抑制）。
