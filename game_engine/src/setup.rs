@@ -13,8 +13,8 @@ use crate::config::{
     GAP_BETWEEN_PADDLE_AND_FLOOR, INITIAL_BALL_DIRECTION, LEFT_WALL, PADDLE_COLOR, PADDLE_SIZE,
     RIGHT_WALL, SCORE_COLOR, SCOREBOARD_FONT_SIZE, SCOREBOARD_TEXT_PADDING, TEXT_COLOR, TOP_WALL,
 };
-use crate::injection::{BackgroundOverride, BrickImagesOverride, BrickLayoutOverride};
-use crate::rendering::{brick_image_for, contain_fit, spawn_brick};
+use crate::injection::{BackgroundOverride, BrickImageOverride, BrickLayoutOverride};
+use crate::rendering::{contain_fit, spawn_brick};
 
 // Add the game's entities to our world
 pub fn setup(
@@ -24,7 +24,7 @@ pub fn setup(
     mut images: ResMut<Assets<Image>>,
     mut background_override: ResMut<BackgroundOverride>,
     mut brick_layout_override: ResMut<BrickLayoutOverride>,
-    mut brick_images_override: ResMut<BrickImagesOverride>,
+    mut brick_image_override: ResMut<BrickImageOverride>,
     asset_server: Res<AssetServer>,
 ) {
     // Camera
@@ -115,25 +115,19 @@ pub fn setup(
     commands.spawn(Wall::new(WallLocation::Top));
 
     // Bricks
-    // React（JS）が渡したブロック用画像（2 種類想定）を `Assets<Image>` に登録し、
-    // 「ハンドル + 元のピクセル寸法」の列にしておく。寸法は各ブロックが画像のどの領域を
-    // 切り出すか（brick_image_rect）に使う。空なら単色ブロックにフォールバックする。
-    let brick_images: Vec<(Handle<Image>, Vec2)> = brick_images_override
-        .0
-        .drain(..)
-        .map(|image| {
-            let size = Vec2::new(image.width() as f32, image.height() as f32);
-            (images.add(image), size)
-        })
-        .collect();
+    // React（JS）が渡したブロック用画像を `Assets<Image>` に登録し、「ハンドル + 元のピクセル寸法」
+    // にしておく。寸法は各ブロックが画像のどの領域を切り出すか（brick_image_rect）に使う。全ブロックが
+    // 同じ画像を共有し、各自の位置に対応する領域を表示する。`None` なら単色ブロックにフォールバック。
+    let brick_image: Option<(Handle<Image>, Vec2)> = brick_image_override.0.take().map(|image| {
+        let size = Vec2::new(image.width() as f32, image.height() as f32);
+        (images.add(image), size)
+    });
 
     // React（JS）が初期ブロック配置を渡していれば、それを使って spawn する。
     // 渡されていなければ、従来どおりアリーナを敷き詰めるデフォルト配置を計算して使う。
-    // どちらの場合も、生成順のインデックスで画像を交互（折り返し）に割り当てる。
     if let Some(layout) = brick_layout_override.0.take() {
-        for (index, position) in layout.positions.iter().enumerate() {
-            let image = brick_image_for(&brick_images, index);
-            spawn_brick(&mut commands, *position, layout.cell_size, image);
+        for position in &layout.positions {
+            spawn_brick(&mut commands, *position, layout.cell_size, brick_image.clone());
         }
         return;
     }
@@ -164,7 +158,6 @@ pub fn setup(
     let offset_x = left_edge_of_bricks + BRICK_SIZE.x / 2.;
     let offset_y = bottom_edge_of_bricks + BRICK_SIZE.y / 2.;
 
-    let mut brick_index = 0;
     for row in 0..n_rows {
         for column in 0..n_columns {
             let brick_position = Vec2::new(
@@ -172,9 +165,7 @@ pub fn setup(
                 offset_y + row as f32 * (BRICK_SIZE.y + GAP_BETWEEN_BRICKS),
             );
 
-            let image = brick_image_for(&brick_images, brick_index);
-            spawn_brick(&mut commands, brick_position, BRICK_SIZE, image);
-            brick_index += 1;
+            spawn_brick(&mut commands, brick_position, BRICK_SIZE, brick_image.clone());
         }
     }
 }

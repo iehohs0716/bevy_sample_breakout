@@ -21,8 +21,8 @@ use bevy::prelude::*;
 
 use components::Score;
 use injection::{
-    injected_background_image, injected_brick_images, injected_brick_layout, BackgroundOverride,
-    BrickImagesOverride, BrickLayoutOverride,
+    injected_background_image, injected_brick_image, injected_brick_layout, BackgroundOverride,
+    BrickImageOverride, BrickLayoutOverride,
 };
 use setup::setup;
 use systems::{
@@ -33,7 +33,7 @@ fn main() {
     App::new()
         .insert_resource(BackgroundOverride(injected_background_image()))
         .insert_resource(BrickLayoutOverride(injected_brick_layout()))
-        .insert_resource(BrickImagesOverride(injected_brick_images()))
+        .insert_resource(BrickImageOverride(injected_brick_image()))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 // Web ビルド時はこの ID の canvas 要素に描画する。

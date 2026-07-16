@@ -29,13 +29,13 @@ type BevyGameProps = {
    */
   cellSize?: { width: number; height: number };
   /**
-   * ブロックの見た目に使う画像の URL 群（2 種類想定）。背景と同様に React 側が fetch し、
-   * バイト列を WASM(Bevy) に渡す。各ブロックには生成順に、この配列の先頭から順番へ
-   * （個数を超えたら折り返して）画像が割り当てられる（例: 2 枚なら交互に並ぶ）。
+   * ブロックの見た目に使う画像の URL。背景と同様に React 側が fetch し、バイト列を WASM(Bevy)
+   * に渡す。盤面全体にこの画像を比率維持で貼ったとみなし、各ブロックはその絵のうち自分が覆う
+   * 領域だけを切り出して表示する（全ブロックが揃うと 1 枚の絵になり、壊すと背景画像が覗く）。
    * 同一オリジンの相対パスでも外部の絶対 URL でも指定可能（外部 URL は配信元の CORS 許可が必要）。
-   * 未指定 / 全 fetch 失敗なら Bevy 側の単色ブロックにフォールバックする。
+   * 未指定 / fetch 失敗なら Bevy 側の単色ブロックにフォールバックする。
    */
-  brickImages?: string[];
+  brickImage?: string;
 };
 
 /**
@@ -55,17 +55,13 @@ export function BevyGame({
   background,
   bricks,
   cellSize,
-  brickImages,
+  brickImage,
 }: BevyGameProps) {
   // React StrictMode は開発時に effect を2回実行する。Bevy(winit) は二重初期化で
   // パニックするため、ref ガードで一度だけ起動する。
   const startedRef = useRef(false);
 
   useEffect(() => {
-    // ref ガードで初期化を一度だけに絞る。ref はマウントをまたいで保持されるため、
-    // StrictMode の二重 effect（マウント→クリーンアップ→再マウント）でも 2 回目は起動しない。
-    // Bevy(winit) は再初期化・破棄ができないので、クリーンアップで init を中断しない
-    // （中断すると唯一の初期化が止まって何も表示されなくなる）。
     if (startedRef.current) return;
     startedRef.current = true;
 
@@ -78,7 +74,7 @@ export function BevyGame({
         backgroundMime?: string;
         bricks?: Array<{ x: number; y: number }>;
         cellSize?: { width: number; height: number };
-        brickImages?: Array<{ bytes: Uint8Array; mime?: string }>;
+        brickImage?: { bytes: Uint8Array; mime?: string };
       } = {};
 
       // 背景画像は React 側で先に fetch し、バイト列を渡す。
@@ -109,32 +105,24 @@ export function BevyGame({
         }
       }
 
-      // ブロック用の画像（2 種類想定）。背景と同様に React 側で fetch してバイト列を渡す。
-      // 一部の fetch が失敗しても、成功したぶんだけ渡す（全滅時は単色ブロックにフォールバック）。
-      if (brickImages && brickImages.length > 0) {
-        const fetched: Array<{ bytes: Uint8Array; mime?: string }> = [];
-        for (const url of brickImages) {
-          try {
-            const res = await fetch(url);
-            if (!res.ok) {
-              throw new Error(
-                `ブロック画像の取得に失敗: ${res.status} ${res.statusText}`,
-              );
-            }
-            const buf = await res.arrayBuffer();
-            fetched.push({
-              bytes: new Uint8Array(buf),
-              mime: res.headers.get("content-type") ?? undefined,
-            });
-          } catch (error) {
-            console.warn(
-              `ブロック画像の取得に失敗しました（${url}）。この画像はスキップします。`,
-              error,
-            );
+      // ブロック用の画像。背景と同様に React 側で fetch してバイト列を渡す。
+      // fetch に失敗した場合は Bevy 側の単色ブロックにフォールバックさせる（致命ではない）。
+      if (brickImage) {
+        try {
+          const res = await fetch(brickImage);
+          if (!res.ok) {
+            throw new Error(`ブロック画像の取得に失敗: ${res.status} ${res.statusText}`);
           }
-        }
-        if (fetched.length > 0) {
-          config.brickImages = fetched;
+          const buf = await res.arrayBuffer();
+          config.brickImage = {
+            bytes: new Uint8Array(buf),
+            mime: res.headers.get("content-type") ?? undefined,
+          };
+        } catch (error) {
+          console.warn(
+            "ブロック画像の取得に失敗しました。単色ブロックで起動します。",
+            error,
+          );
         }
       }
 

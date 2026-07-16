@@ -9,20 +9,6 @@ use bevy::prelude::*;
 use crate::components::{Brick, Collider};
 use crate::config::{BOTTOM_WALL, BRICK_COLOR, LEFT_WALL, RIGHT_WALL, TOP_WALL};
 
-/// ブロック用の画像（ハンドルと元のピクセル寸法）の一覧から、`index` 番目のブロックに
-/// 割り当てる画像を返す。空なら `None`（＝単色ブロック）。個数を超えたら折り返して使う
-/// （例: 2 枚なら偶数番=1 枚目・奇数番=2 枚目が交互に並ぶ）。
-pub fn brick_image_for(
-    images: &[(Handle<Image>, Vec2)],
-    index: usize,
-) -> Option<(Handle<Image>, Vec2)> {
-    if images.is_empty() {
-        None
-    } else {
-        Some(images[index % images.len()].clone())
-    }
-}
-
 /// `content`（例: 画像のピクセル寸法）を `container`（例: アリーナ）に、アスペクト比を
 /// 保ったまま内接させたときの表示寸法を返す（いわゆる "contain" フィット）。
 /// 比率が合わない分は余白になる（呼び出し側で黒く塗る前提）。

@@ -10,6 +10,57 @@ use bevy::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use crate::config::BRICK_SIZE;
 
+/// Web ビルド専用。`window.__BREAKOUT_CONFIG__` を取得する。
+/// 未定義 / null の場合は `None`。
+#[cfg(target_arch = "wasm32")]
+fn breakout_config() -> Option<wasm_bindgen::JsValue> {
+    use wasm_bindgen::JsValue;
+
+    let window = web_sys::window()?;
+    let config = js_sys::Reflect::get(&window, &JsValue::from_str("__BREAKOUT_CONFIG__")).ok()?;
+    if config.is_undefined() || config.is_null() {
+        return None;
+    }
+    Some(config)
+}
+
+/// Web ビルド専用。画像バイト列と（任意の）MIME を `Image` にデコードする共通処理。
+/// MIME が受け取れればそれを使い、無ければ拡張子 png とみなす。
+/// デコードに失敗した場合は `fallback_desc`（例: 「デフォルト背景を使用します」）を
+/// 添えて warn し、`None` を返す。
+#[cfg(target_arch = "wasm32")]
+fn decode_injected_image(bytes: &[u8], mime: Option<String>, fallback_desc: &str) -> Option<Image> {
+    use bevy::{
+        asset::RenderAssetUsages,
+        image::{CompressedImageFormats, ImageSampler, ImageType},
+    };
+
+    if bytes.is_empty() {
+        return None;
+    }
+
+    // 画像フォーマットは MIME で受け取れれば使い、無ければ拡張子 png とみなす。
+    let image_type = match mime.as_deref() {
+        Some(m) if !m.is_empty() => ImageType::MimeType(m),
+        _ => ImageType::Extension("png"),
+    };
+
+    match Image::from_buffer(
+        bytes,
+        image_type,
+        CompressedImageFormats::NONE,
+        true,
+        ImageSampler::Default,
+        RenderAssetUsages::default(),
+    ) {
+        Ok(image) => Some(image),
+        Err(err) => {
+            warn!("画像のデコードに失敗しました。{fallback_desc}: {err}");
+            None
+        }
+    }
+}
+
 // React（JS）から渡された背景画像を一時的に保持する Resource。
 // `setup` で取り出して `Assets<Image>` に登録し、背景スプライトに使う。
 // `None` の場合は `BACKGROUND_IMAGE_PATH` のデフォルト画像にフォールバックする。
@@ -21,47 +72,18 @@ pub struct BackgroundOverride(pub Option<Image>);
 /// 設定が無い / 読めない / デコード失敗の場合は `None`（デフォルト背景にフォールバック）。
 #[cfg(target_arch = "wasm32")]
 pub fn injected_background_image() -> Option<Image> {
-    use bevy::{
-        asset::RenderAssetUsages,
-        image::{CompressedImageFormats, ImageSampler, ImageType},
-    };
     use wasm_bindgen::{JsCast, JsValue};
 
-    let window = web_sys::window()?;
-    let config = js_sys::Reflect::get(&window, &JsValue::from_str("__BREAKOUT_CONFIG__")).ok()?;
-    if config.is_undefined() || config.is_null() {
-        return None;
-    }
+    let config = breakout_config()?;
 
     let bytes_val = js_sys::Reflect::get(&config, &JsValue::from_str("backgroundBytes")).ok()?;
     let bytes = bytes_val.dyn_into::<js_sys::Uint8Array>().ok()?.to_vec();
-    if bytes.is_empty() {
-        return None;
-    }
 
-    // 画像フォーマットは MIME で受け取れれば使い、無ければ拡張子 png とみなす。
     let mime = js_sys::Reflect::get(&config, &JsValue::from_str("backgroundMime"))
         .ok()
         .and_then(|v| v.as_string());
-    let image_type = match mime.as_deref() {
-        Some(m) if !m.is_empty() => ImageType::MimeType(m),
-        _ => ImageType::Extension("png"),
-    };
 
-    match Image::from_buffer(
-        &bytes,
-        image_type,
-        CompressedImageFormats::NONE,
-        true,
-        ImageSampler::Default,
-        RenderAssetUsages::default(),
-    ) {
-        Ok(image) => Some(image),
-        Err(err) => {
-            warn!("背景画像のデコードに失敗しました。デフォルト背景を使用します: {err}");
-            None
-        }
-    }
+    decode_injected_image(&bytes, mime, "デフォルト背景を使用します")
 }
 
 /// ネイティブビルドでは JS からの注入は無い（常にデフォルト背景を使う）。
@@ -93,11 +115,7 @@ pub struct BrickLayoutOverride(pub Option<BrickLayout>);
 pub fn injected_brick_layout() -> Option<BrickLayout> {
     use wasm_bindgen::{JsCast, JsValue};
 
-    let window = web_sys::window()?;
-    let config = js_sys::Reflect::get(&window, &JsValue::from_str("__BREAKOUT_CONFIG__")).ok()?;
-    if config.is_undefined() || config.is_null() {
-        return None;
-    }
+    let config = breakout_config()?;
 
     let bricks_val = js_sys::Reflect::get(&config, &JsValue::from_str("bricks")).ok()?;
     let bricks_arr = bricks_val.dyn_into::<js_sys::Array>().ok()?;
@@ -153,87 +171,41 @@ pub fn injected_brick_layout() -> Option<BrickLayout> {
     None
 }
 
-// React（JS）から渡された「ブロック用の画像（2 種類想定）」を一時的に保持する Resource。
-// `setup` で `Assets<Image>` に登録してハンドル列に変換し、各ブロックへ順番に割り当てる。
-// 空の場合は従来どおり `BRICK_COLOR` の単色ブロックにフォールバックする。
+// React（JS）から渡された「ブロック用の画像」を一時的に保持する Resource。
+// `setup` で `Assets<Image>` に登録し、各ブロックが自分の位置に対応する領域を切り出して使う。
+// `None` の場合は `BRICK_COLOR` の単色ブロックにフォールバックする。
 #[derive(Resource, Default)]
-pub struct BrickImagesOverride(pub Vec<Image>);
+pub struct BrickImageOverride(pub Option<Image>);
 
-/// Web ビルド専用。`window.__BREAKOUT_CONFIG__.brickImages`
-/// （`[{ bytes: Uint8Array, mime?: string }, ...]` の配列）を読み、
-/// デコード済みの `Image` 列として返す。ブロックにはこの配列を先頭から順に
-/// （個数を超えたら折り返して）割り当てる。
-/// 設定が無い / 空 / 全てデコード失敗の場合は空 Vec（単色ブロックにフォールバック）。
+/// Web ビルド専用。`window.__BREAKOUT_CONFIG__.brickImage`
+/// （`{ bytes: Uint8Array, mime?: string }`）を読み、デコード済みの `Image` を返す。
+/// 設定が無い / 読めない / デコード失敗の場合は `None`（単色ブロックにフォールバック）。
 #[cfg(target_arch = "wasm32")]
-pub fn injected_brick_images() -> Vec<Image> {
-    use bevy::{
-        asset::RenderAssetUsages,
-        image::{CompressedImageFormats, ImageSampler, ImageType},
-    };
+pub fn injected_brick_image() -> Option<Image> {
     use wasm_bindgen::{JsCast, JsValue};
 
-    let mut result = Vec::new();
+    let config = breakout_config()?;
 
-    let Some(window) = web_sys::window() else {
-        return result;
-    };
-    let Ok(config) = js_sys::Reflect::get(&window, &JsValue::from_str("__BREAKOUT_CONFIG__"))
-    else {
-        return result;
-    };
-    if config.is_undefined() || config.is_null() {
-        return result;
-    }
-    let Ok(images_val) = js_sys::Reflect::get(&config, &JsValue::from_str("brickImages")) else {
-        return result;
-    };
-    let Ok(images_arr) = images_val.dyn_into::<js_sys::Array>() else {
-        return result;
-    };
-
-    for i in 0..images_arr.length() {
-        let entry = images_arr.get(i);
-        let bytes = match js_sys::Reflect::get(&entry, &JsValue::from_str("bytes"))
-            .ok()
-            .and_then(|v| v.dyn_into::<js_sys::Uint8Array>().ok())
-        {
-            Some(arr) => arr.to_vec(),
-            None => {
-                warn!("ブロック画像の要素 {i} に bytes(Uint8Array) が無いためスキップします");
-                continue;
-            }
-        };
-        if bytes.is_empty() {
-            continue;
-        }
-
-        // 画像フォーマットは MIME で受け取れれば使い、無ければ拡張子 png とみなす。
-        let mime = js_sys::Reflect::get(&entry, &JsValue::from_str("mime"))
-            .ok()
-            .and_then(|v| v.as_string());
-        let image_type = match mime.as_deref() {
-            Some(m) if !m.is_empty() => ImageType::MimeType(m),
-            _ => ImageType::Extension("png"),
-        };
-
-        match Image::from_buffer(
-            &bytes,
-            image_type,
-            CompressedImageFormats::NONE,
-            true,
-            ImageSampler::Default,
-            RenderAssetUsages::default(),
-        ) {
-            Ok(image) => result.push(image),
-            Err(err) => warn!("ブロック画像のデコードに失敗しました（要素 {i}）: {err}"),
-        }
+    let entry = js_sys::Reflect::get(&config, &JsValue::from_str("brickImage")).ok()?;
+    if entry.is_undefined() || entry.is_null() {
+        return None;
     }
 
-    result
+    let bytes = js_sys::Reflect::get(&entry, &JsValue::from_str("bytes"))
+        .ok()?
+        .dyn_into::<js_sys::Uint8Array>()
+        .ok()?
+        .to_vec();
+
+    let mime = js_sys::Reflect::get(&entry, &JsValue::from_str("mime"))
+        .ok()
+        .and_then(|v| v.as_string());
+
+    decode_injected_image(&bytes, mime, "単色ブロックを使用します")
 }
 
 /// ネイティブビルドでは JS からの注入は無い（常に単色ブロックを使う）。
 #[cfg(not(target_arch = "wasm32"))]
-pub fn injected_brick_images() -> Vec<Image> {
-    Vec::new()
+pub fn injected_brick_image() -> Option<Image> {
+    None
 }

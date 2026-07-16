@@ -17,9 +17,8 @@ const BRICK_LAYOUT = buildPyramidLayout();
 // ブロックの見た目に使う画像。盤面全体にこの画像を「そのまま」貼ったとみなし、各ブロックは
 // 自分の位置に対応する部分だけを切り出して表示する。全ブロックが揃うと 1 枚の絵になり、
 // ブロックを壊すと、その穴から背後の背景画像（BACKGROUND_URL）が覗く。
-// 配列で複数枚渡すと、ブロック生成順に交互（1 枚目 → 2 枚目 → …）で割り当てられる。
-// ここでは背景(sunset)と対比が分かりやすいよう、格子模様(grid)の 1 枚を使う。
-const BRICK_IMAGE_URLS = ["/assets/backgrounds/sample_grid.png"];
+// ここでは背景と対比が分かりやすいよう、格子模様(grid)を使う。
+const BRICK_IMAGE_URL = "/assets/backgrounds/sample_grid.png";
 
 // 上に頂点を持つピラミッド（最上段 1 個 → 下段ほど増える）を中央揃えで生成する。
 function buildPyramidLayout(): Array<{ x: number; y: number }> {
@@ -52,7 +51,7 @@ export function App() {
           background={BACKGROUND_URL}
           bricks={BRICK_LAYOUT}
           cellSize={CELL_SIZE}
-          brickImages={BRICK_IMAGE_URLS}
+          brickImage={BRICK_IMAGE_URL}
         />
       </div>
     </main>
