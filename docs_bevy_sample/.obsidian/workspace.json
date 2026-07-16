@@ -185,6 +185,17 @@
   },
   "active": "52e1d04ce69ae92c",
   "lastOpenFiles": [
+    "20260716_bevy-resource-res-resmut-basics.md",
+    "20260716_background-rendering-and-bevy-system-params.md",
+    "20260715_main-rs-module-split.md",
+    "20260715_aspect-ratio-and-letterbox.md",
+    "20260715_brick-image-rendering.md",
+    "20260711_why-wasm-is-secure.md",
+    "20260711_wasm-build-size-optimization.md",
+    "20260711_react-to-bevy-init-params.md",
+    "20260711_wasm-bevy-browser-verification.md",
+    "20260711_react-to-bevy-background-injection.md",
+    "20260711_external-image-cors-and-formats.md",
     "20260711_bevy-wasm-react-integration.md"
   ]
 }
