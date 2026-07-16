@@ -8,12 +8,13 @@ use crate::components::{
 };
 use crate::config::{
     BACKGROUND_IMAGE_PATH, BACKGROUND_SIZE, BALL_COLOR, BALL_DIAMETER, BALL_SPEED,
-    BALL_STARTING_POSITION, BOTTOM_WALL, BRICK_SIZE, GAP_BETWEEN_BRICKS,
-    GAP_BETWEEN_BRICKS_AND_CEILING, GAP_BETWEEN_BRICKS_AND_SIDES, GAP_BETWEEN_PADDLE_AND_BRICKS,
-    GAP_BETWEEN_PADDLE_AND_FLOOR, INITIAL_BALL_DIRECTION, LEFT_WALL, PADDLE_COLOR, PADDLE_SIZE,
-    RIGHT_WALL, SCORE_COLOR, SCOREBOARD_FONT_SIZE, SCOREBOARD_TEXT_PADDING, TEXT_COLOR, TOP_WALL,
+    BALL_STARTING_POSITION, BOTTOM_WALL, GAP_BETWEEN_PADDLE_AND_FLOOR, INITIAL_BALL_DIRECTION,
+    PADDLE_COLOR, PADDLE_SIZE, SCORE_COLOR, SCOREBOARD_FONT_SIZE, SCOREBOARD_TEXT_PADDING,
+    TEXT_COLOR,
 };
-use crate::injection::{BackgroundOverride, BrickImageOverride, BrickLayoutOverride};
+use crate::injection::{
+    default_brick_layout, BackgroundOverride, BrickImageOverride, BrickLayoutOverride,
+};
 use crate::rendering::{contain_fit, spawn_brick};
 
 // Add the game's entities to our world
@@ -31,18 +32,14 @@ pub fn setup(
     commands.spawn(Camera2d);
 
     // Background image
-    // React（JS）が背景画像バイト列を渡していれば、それをデコード済みの `Image` として
-    // `Assets<Image>` に登録してハンドルを得る。渡されていなければ `BACKGROUND_IMAGE_PATH`
-    // のデフォルト画像を AssetServer 経由でロードする。
-    // アスペクト比は変えず（引き伸ばさず）、アリーナに contain フィットさせて中央に置く。
-    // 比率が合わない余白は画面クリア色（黒）が見える。
-    // z を負にして他の要素（壁・ブロック・ボール）より後ろに配置する。
-    // 注: 寸法が分かるのは React が Image を渡したときだけ。AssetServer ロード時は寸法が
-    // 起動時点で未確定なので、従来どおりアリーナ全体に引き伸ばす。
+    // background_override.0.take()の成否によって挙動を変更
+    // 成功 -> `Assets<Image>` に登録してハンドル(画像の参照)を取得する。
+    // 失敗 -> 既存のリソースを使う
     let (background_handle, background_size) = match background_override.0.take() {
         Some(image) => {
             let image_size = Vec2::new(image.width() as f32, image.height() as f32);
-            (images.add(image), contain_fit(image_size, BACKGROUND_SIZE))
+            // アスペクト比を変えないようにサイズを補正
+            (images.add(image), contain_fit(image_size, BACKGROUND_SIZE)) 
         }
         None => (asset_server.load(BACKGROUND_IMAGE_PATH), BACKGROUND_SIZE),
     };
@@ -52,7 +49,7 @@ pub fn setup(
             custom_size: Some(background_size),
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, -10.0),
+        Transform::from_xyz(0.0, 0.0, -10.0),     // z を負にして他の要素（壁・ブロック・ボール）より後ろに配置する。
     ));
 
     // Sound
@@ -61,7 +58,6 @@ pub fn setup(
 
     // Paddle
     let paddle_y = BOTTOM_WALL + GAP_BETWEEN_PADDLE_AND_FLOOR;
-
     commands.spawn((
         Sprite::from_color(PADDLE_COLOR, Vec2::ONE),
         Transform {
@@ -123,49 +119,14 @@ pub fn setup(
         (images.add(image), size)
     });
 
-    // React（JS）が初期ブロック配置を渡していれば、それを使って spawn する。
-    // 渡されていなければ、従来どおりアリーナを敷き詰めるデフォルト配置を計算して使う。
-    if let Some(layout) = brick_layout_override.0.take() {
-        for position in &layout.positions {
-            spawn_brick(&mut commands, *position, layout.cell_size, brick_image.clone());
-        }
-        return;
-    }
-
-    let total_width_of_bricks = (RIGHT_WALL - LEFT_WALL) - 2. * GAP_BETWEEN_BRICKS_AND_SIDES;
-    let bottom_edge_of_bricks = paddle_y + GAP_BETWEEN_PADDLE_AND_BRICKS;
-    let total_height_of_bricks = TOP_WALL - bottom_edge_of_bricks - GAP_BETWEEN_BRICKS_AND_CEILING;
-
-    assert!(total_width_of_bricks > 0.0);
-    assert!(total_height_of_bricks > 0.0);
-
-    // Given the space available, compute how many rows and columns of bricks we can fit
-    let n_columns = (total_width_of_bricks / (BRICK_SIZE.x + GAP_BETWEEN_BRICKS)).floor() as usize;
-    let n_rows = (total_height_of_bricks / (BRICK_SIZE.y + GAP_BETWEEN_BRICKS)).floor() as usize;
-    let n_vertical_gaps = n_columns - 1;
-
-    // Because we need to round the number of columns,
-    // the space on the top and sides of the bricks only captures a lower bound, not an exact value
-    let center_of_bricks = (LEFT_WALL + RIGHT_WALL) / 2.0;
-    let left_edge_of_bricks = center_of_bricks
-        // Space taken up by the bricks
-        - (n_columns as f32 / 2.0 * BRICK_SIZE.x)
-        // Space taken up by the gaps
-        - n_vertical_gaps as f32 / 2.0 * GAP_BETWEEN_BRICKS;
-
-    // In Bevy, the `translation` of an entity describes the center point,
-    // not its bottom-left corner
-    let offset_x = left_edge_of_bricks + BRICK_SIZE.x / 2.;
-    let offset_y = bottom_edge_of_bricks + BRICK_SIZE.y / 2.;
-
-    for row in 0..n_rows {
-        for column in 0..n_columns {
-            let brick_position = Vec2::new(
-                offset_x + column as f32 * (BRICK_SIZE.x + GAP_BETWEEN_BRICKS),
-                offset_y + row as f32 * (BRICK_SIZE.y + GAP_BETWEEN_BRICKS),
-            );
-
-            spawn_brick(&mut commands, brick_position, BRICK_SIZE, brick_image.clone());
-        }
+    // ブロック配置は「レイアウトを取得 → 各位置に spawn」の一本道。React（JS）が配置を
+    // 渡していればそれを、無ければアリーナを敷き詰めるデフォルト配置を使う。どちらも同じ
+    // `BrickLayout` なので、以降の spawn ロジックを分岐させる必要はない。
+    let layout = brick_layout_override
+        .0
+        .take()
+        .unwrap_or_else(|| default_brick_layout(paddle_y));
+    for position in &layout.positions {
+        spawn_brick(&mut commands, *position, layout.cell_size, brick_image.clone());
     }
 }

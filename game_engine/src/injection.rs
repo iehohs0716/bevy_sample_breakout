@@ -7,8 +7,10 @@
 
 use bevy::prelude::*;
 
-#[cfg(target_arch = "wasm32")]
-use crate::config::BRICK_SIZE;
+use crate::config::{
+    BRICK_SIZE, GAP_BETWEEN_BRICKS, GAP_BETWEEN_BRICKS_AND_CEILING, GAP_BETWEEN_BRICKS_AND_SIDES,
+    GAP_BETWEEN_PADDLE_AND_BRICKS, LEFT_WALL, RIGHT_WALL, TOP_WALL,
+};
 
 /// Web ビルド専用。`window.__BREAKOUT_CONFIG__` を取得する。
 /// 未定義 / null の場合は `None`。
@@ -99,6 +101,49 @@ pub fn injected_background_image() -> Option<Image> {
 pub struct BrickLayout {
     pub positions: Vec<Vec2>,
     pub cell_size: Vec2,
+}
+
+/// React（JS）由来の配置が無いときに使う、アリーナを敷き詰めるデフォルトのブロック配置を計算して返す。
+/// `injected_brick_layout()`（外部指定）と対になる「組み込みの標準配置」。`paddle_y` はパドルの
+/// 中心 y で、ブロック帯はその上に `GAP_BETWEEN_PADDLE_AND_BRICKS` だけ空けて始まる。
+/// 入力は全てコンパイル時定数由来なので結果は決定的（起動時に一度計算するだけ）。
+pub fn default_brick_layout(paddle_y: f32) -> BrickLayout {
+    let total_width_of_bricks = (RIGHT_WALL - LEFT_WALL) - 2. * GAP_BETWEEN_BRICKS_AND_SIDES;
+    let bottom_edge_of_bricks = paddle_y + GAP_BETWEEN_PADDLE_AND_BRICKS;
+    let total_height_of_bricks = TOP_WALL - bottom_edge_of_bricks - GAP_BETWEEN_BRICKS_AND_CEILING;
+
+    assert!(total_width_of_bricks > 0.0);
+    assert!(total_height_of_bricks > 0.0);
+
+    // 使える面積に何行・何列入るか（切り捨て）。
+    let n_columns = (total_width_of_bricks / (BRICK_SIZE.x + GAP_BETWEEN_BRICKS)).floor() as usize;
+    let n_rows = (total_height_of_bricks / (BRICK_SIZE.y + GAP_BETWEEN_BRICKS)).floor() as usize;
+    let n_vertical_gaps = n_columns - 1;
+
+    // 列数を丸めたぶん帯の幅は領域より狭くなるので、中心から帯の半分だけ戻して中央揃えにする。
+    let center_of_bricks = (LEFT_WALL + RIGHT_WALL) / 2.0;
+    let left_edge_of_bricks = center_of_bricks
+        - (n_columns as f32 / 2.0 * BRICK_SIZE.x)
+        - n_vertical_gaps as f32 / 2.0 * GAP_BETWEEN_BRICKS;
+
+    // `translation` は中心座標なので、左下の縁から半セルぶん内側を最初のブロックの中心にする。
+    let offset_x = left_edge_of_bricks + BRICK_SIZE.x / 2.;
+    let offset_y = bottom_edge_of_bricks + BRICK_SIZE.y / 2.;
+
+    let mut positions = Vec::with_capacity(n_rows * n_columns);
+    for row in 0..n_rows {
+        for column in 0..n_columns {
+            positions.push(Vec2::new(
+                offset_x + column as f32 * (BRICK_SIZE.x + GAP_BETWEEN_BRICKS),
+                offset_y + row as f32 * (BRICK_SIZE.y + GAP_BETWEEN_BRICKS),
+            ));
+        }
+    }
+
+    BrickLayout {
+        positions,
+        cell_size: BRICK_SIZE,
+    }
 }
 
 // React（JS）から渡された初期ブロック配置を一時的に保持する Resource。
