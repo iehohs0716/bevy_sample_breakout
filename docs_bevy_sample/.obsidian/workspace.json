@@ -185,6 +185,9 @@
   },
   "active": "52e1d04ce69ae92c",
   "lastOpenFiles": [
+    "20260717_wasm-dispatch-event-mechanism.md",
+    "20260717_game-state-and-clear-notification-impl.md",
+    "20260717_bevy-to-frontend-event-notification.md",
     "20260716_bevy-resource-res-resmut-basics.md",
     "20260716_background-rendering-and-bevy-system-params.md",
     "20260715_main-rs-module-split.md",
