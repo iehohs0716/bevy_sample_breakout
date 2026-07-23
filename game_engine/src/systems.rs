@@ -56,7 +56,9 @@ pub fn update_scoreboard(
     score_root: Single<Entity, (With<ScoreboardUi>, With<Text>)>,
     mut writer: TextUiWriter,
 ) {
-    *writer.text(*score_root, 1) = score.to_string();
+    // `*score_root` でも動くが、rust-analyzer が Single の Deref を解決できず E0614 を誤検知する。
+    // `into_inner()` で中身の Entity を取り出せば * を踏まないので誤検知しない（rustc は両方通る）。
+    *writer.text(score_root.into_inner(), 1) = score.to_string();
 }
 
 pub fn update_lives(
@@ -64,7 +66,7 @@ pub fn update_lives(
     lives_root: Single<Entity, (With<LivesUi>, With<Text>)>,
     mut writer: TextUiWriter,
 ) {
-    *writer.text(*lives_root, 1) = lives.to_string();
+    *writer.text(lives_root.into_inner(), 1) = lives.to_string();
 }
 
 /// 敗北後の再スタート処理。`OnEnter(GameState::GameRestart)` に登録する（ネイティブのみ経由）。
