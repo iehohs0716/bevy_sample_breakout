@@ -185,6 +185,7 @@
   },
   "active": "52e1d04ce69ae92c",
   "lastOpenFiles": [
+    "20260723_bevy-init-vs-restart-state.md",
     "20260723_bevy-assets-handle-add-pattern.md",
     "20260723_rust-tuple-struct-and-dot-zero.md",
     "20260723_deref-newtype-vs-dot-zero.md",

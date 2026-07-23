@@ -70,15 +70,17 @@ fn main() {
         // 全ブロック破壊の判定もプレイ中のみ。0 になったら Cleared へ遷移する。
         .add_systems(Update, check_game_clear.run_if(in_state(GameState::Playing)))
         .add_systems(Update, (update_scoreboard, update_lives))
-        // GameStart に入るたびに盤面をリセットし、クリックでボール発射 → Playing へ。
-        .add_systems(OnEnter(GameState::GameStart), reset_game)
+        // クリック待ち（GameStart=初回 / GameRestart=敗北後）中の左クリックでボール発射 → Playing へ。
         .add_systems(
             Update,
-            launch_ball_on_click.run_if(in_state(GameState::GameStart)),
+            launch_ball_on_click
+                .run_if(in_state(GameState::GameStart).or_else(in_state(GameState::GameRestart))),
         )
         // 状態に入った瞬間に一度だけ、通知や再スタート処理を行う。
         .add_systems(OnEnter(GameState::Cleared), on_game_clear)
         .add_systems(OnEnter(GameState::GameOver), on_game_over)
+        // 敗北後の再スタート（ネイティブのみ）: 盤面を作り直して GameStart へ戻す。
+        .add_systems(OnEnter(GameState::GameRestart), reset_game)
         .add_observer(play_collision_sound)
         .run();
 }

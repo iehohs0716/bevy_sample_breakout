@@ -67,29 +67,23 @@ pub fn update_lives(
     *writer.text(*lives_root, 1) = lives.to_string();
 }
 
-/// `GameStart` に入るたびに盤面を初期状態へ戻す（スコア/ライフ・ブロック・ボールを初期化）。
+/// 敗北後の再スタート処理。`OnEnter(GameState::GameRestart)` に登録する（ネイティブのみ経由）。
+/// スコア/ライフをリセットし、ブロックを配置し直し、ボールを初期位置で静止させる。
+/// **状態は `GameRestart` のまま**にする（＝敗北後のクリック待ち状態そのもの）。ここで起動用の
+/// `GameStart` に戻さないのが肝で、それにより「起動時」と「再スタート時」を最後まで別状態に保つ。
+/// クリックでの発射は `launch_ball_on_click` が `GameStart` / `GameRestart` の両方で担う。
 ///
-/// 注意: Bevy の仕様上、初期状態 `GameStart` の OnEnter は `PreStartup` より前に 1 回走る
-/// （`StateTransition` が `insert_startup_before(PreStartup)` で登録されるため）。その時点では
-/// `setup`(Startup) 未実行で `GameAssets` も `Ball` も無い。そこで両方が揃うまでは何もせず戻り、
-/// 初回の盤面は `setup` に任せる。ここが実際に効くのは 2 回目以降＝ネイティブでの再スタート
-/// （GameOver → GameStart）のとき。
+/// `GameRestart` は起動後（`GameOver` 経由）にしか入らないため、`GameAssets` も `Ball` も必ず存在
+/// する。初期状態 `GameStart` の OnEnter のように Startup より前に走ることが無いので、`Option`
+/// ガードや空振り処理は不要で、`Res` / `Single` を素直に使える。
 pub fn reset_game(
     mut commands: Commands,
     mut score: ResMut<Score>,
     mut lives: ResMut<Lives>,
-    game_assets: Option<Res<GameAssets>>,
+    game_assets: Res<GameAssets>,
     bricks: Query<Entity, With<Brick>>,
-    mut ball: Query<(&mut Transform, &mut Velocity), With<Ball>>,
+    ball: Single<(&mut Transform, &mut Velocity), With<Ball>>,
 ) {
-    // setup 前の早すぎる発火では GameAssets / Ball が未準備。ここでは何もしない。
-    let Some(game_assets) = game_assets else {
-        return;
-    };
-    let Ok((mut transform, mut velocity)) = ball.single_mut() else {
-        return;
-    };
-
     score.0 = 0;
     lives.0 = INITIAL_LIVES;
 
@@ -106,13 +100,14 @@ pub fn reset_game(
         );
     }
 
-    // ボールを初期位置に戻し、クリックまで静止させる。
+    // ボールを初期位置で静止させる。状態は GameRestart のまま＝このままクリック待ち。
+    let (mut transform, mut velocity) = ball.into_inner();
     transform.translation = BALL_STARTING_POSITION;
     velocity.0 = Vec2::ZERO;
 }
 
-/// `GameStart` 中に左クリックされたらボールを発射し、`Playing` へ遷移する。
-/// これにより「開始待ち → クリックで動き出す」流れを作る。
+/// `GameStart` / `GameRestart`（どちらもクリック待ち）中に左クリックされたらボールを発射し、`Playing` へ遷移する。
+/// 初回開始も再スタートも「クリックで動き出す」流れを共通化する。
 pub fn launch_ball_on_click(
     mouse_input: Res<ButtonInput<MouseButton>>,
     mut ball_velocity: Single<&mut Velocity, With<Ball>>,
@@ -220,7 +215,7 @@ pub fn on_game_clear(score: Res<Score>) {
 
 /// ゲームオーバー状態に入った瞬間に一度だけ実行する。`OnEnter(GameState::GameOver)` に登録。
 /// - WASM: `breakout:gameover` を通知し、遷移は React に委ねる（クリアと同じ思想）。
-/// - ネイティブ: JS 通知は no-op なのでそのままだと画面が固まる。代わりに `GameStart` へ戻し、
+/// - ネイティブ: JS 通知は no-op なのでそのままだと画面が固まる。代わりに `GameRestart` へ遷移し、
 ///   `reset_game` で盤面を作り直して再プレイできるようにする。
 /// `next_state` はネイティブでのみ使うため、WASM では引数ごと省く（未使用警告の回避）。
 pub fn on_game_over(
@@ -230,7 +225,7 @@ pub fn on_game_over(
     notify_game_over(score.0);
 
     #[cfg(not(target_arch = "wasm32"))]
-    next_state.set(GameState::GameStart);
+    next_state.set(GameState::GameRestart);
 }
 
 pub fn play_collision_sound(

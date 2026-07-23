@@ -153,9 +153,8 @@ pub fn setup(
         .take()
         .unwrap_or_else(|| default_brick_layout(paddle_y));
 
-    // 初期盤面のブロックを spawn する。初期状態 GameStart の OnEnter（reset_game）は Bevy の仕様上
-    // Startup より前に 1 回走り、その時点では GameAssets が未生成で何もしない。よって初回の配置は
-    // setup が担い、reset_game は 2 回目以降（GameOver→GameStart の再スタート）で作り直す。
+    // 各ブロックを配置座標に spawn する（＝起動時の初期盤面）。初回配置は setup が担い、
+    // 敗北後の再スタート（GameOver→GameRestart）でのブロック作り直しは reset_game が担う。
     for position in &brick_layout.positions {
         spawn_brick(&mut commands, *position, brick_layout.cell_size, brick_image.clone());
     }
