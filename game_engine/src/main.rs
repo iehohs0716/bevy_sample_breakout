@@ -6,6 +6,7 @@
 //! - `config`: ゲーム全体の定数
 //! - `components`: Component / Resource / Event の定義
 //! - `injection`: React(JS) から渡される初期化パラメータの読み取り
+//! - `notify`: ゲームイベント（クリア等）をフロント(JS)へ通知
 //! - `rendering`: 画像フィット計算とブロック描画ヘルパー
 //! - `setup`: 起動時セットアップ system
 //! - `systems`: 毎フレームのゲームプレイ system
@@ -13,20 +14,22 @@
 mod components;
 mod config;
 mod injection;
+mod notify;
 mod rendering;
 mod setup;
 mod systems;
 
 use bevy::prelude::*;
 
-use components::Score;
+use components::{GameState, Score};
 use injection::{
     injected_background_image, injected_brick_image, injected_brick_layout, BackgroundOverride,
     BrickImageOverride, BrickLayoutOverride,
 };
 use setup::setup;
 use systems::{
-    apply_velocity, check_for_collisions, move_paddle, play_collision_sound, update_scoreboard,
+    apply_velocity, check_for_collisions, check_game_clear, move_paddle, on_game_clear,
+    on_game_over, play_collision_sound, update_scoreboard,
 };
 
 fn main() {
@@ -49,16 +52,25 @@ fn main() {
         .insert_resource(Score(0))
         // 背景画像を比率維持で置くため、余白（レターボックス）は黒で塗る。
         .insert_resource(ClearColor(Color::BLACK))
+        // ゲーム状態を Rust 側で管理する（初期状態は Playing）。
+        .init_state::<GameState>()
         .add_systems(Startup, setup)
         // Add our simulation systems to the update schedule
         // which is called once per frame.
+        // ゲームプレイ system はプレイ中（Playing）のみ動かす。クリア後はボールを止める。
         .add_systems(
             Update,
             (apply_velocity, move_paddle, check_for_collisions)
                 // `chain`ing systems together runs them in order
-                .chain(),
+                .chain()
+                .run_if(in_state(GameState::Playing)),
         )
+        // 全ブロック破壊の判定もプレイ中のみ。0 になったら Cleared へ遷移する。
+        .add_systems(Update, check_game_clear.run_if(in_state(GameState::Playing)))
         .add_systems(Update, update_scoreboard)
+        // 状態に入った瞬間に一度だけ、フロント(JS)へ通知する。
+        .add_systems(OnEnter(GameState::Cleared), on_game_clear)
+        .add_systems(OnEnter(GameState::GameOver), on_game_over)
         .add_observer(play_collision_sound)
         .run();
 }

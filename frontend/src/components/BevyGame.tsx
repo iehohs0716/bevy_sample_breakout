@@ -36,6 +36,20 @@ type BevyGameProps = {
    * 未指定 / fetch 失敗なら Bevy 側の単色ブロックにフォールバックする。
    */
   brickImage?: string;
+  /**
+   * ゲームクリア（全ブロック破壊）を Bevy(WASM) が検知したときに呼ばれる。
+   * Bevy 側は `window.dispatchEvent(new CustomEvent("breakout:gameclear", { detail: { score } }))`
+   * を投げるだけで、遷移（リロード/画面移動）は React が担う。未指定の場合は既定で
+   * `window.location.reload()`（＝リロードして次ゲーム）を行う。遷移先を変えたい場合は
+   * このコールバックで上書きする（例: 結果画面へ `location.href = ...`）。
+   */
+  onGameClear?: (detail: { score: number }) => void;
+  /**
+   * ゲームオーバーを Bevy(WASM) が検知したときに呼ばれる（`breakout:gameover`）。
+   * 現状の Bevy 側は GameOver への遷移条件が未実装なので発火しないが、将来に備えて用意する。
+   * `onGameClear` と同様、遷移は React 側でこのコールバックに実装する。
+   */
+  onGameOver?: (detail: { score: number }) => void;
 };
 
 /**
@@ -56,10 +70,38 @@ export function BevyGame({
   bricks,
   cellSize,
   brickImage,
+  onGameClear,
+  onGameOver,
 }: BevyGameProps) {
   // React StrictMode は開発時に effect を2回実行する。Bevy(winit) は二重初期化で
   // パニックするため、ref ガードで一度だけ起動する。
   const startedRef = useRef(false);
+
+  // Bevy(WASM) → フロントのゲームイベントを受ける。遷移（リロード等）は React が担う。
+  // Bevy 側は状態遷移時に CustomEvent を投げるだけで、URL は一切知らない。
+  useEffect(() => {
+    const handleGameClear = (e: Event) => {
+      const detail = (e as CustomEvent<{ score: number }>).detail;
+      if (onGameClear) {
+        onGameClear(detail);
+      } else {
+        // 既定挙動: リロードして次ゲーム。次ゲームのパラメータを差し替えたい場合は
+        // onGameClear で上書きし、window.__BREAKOUT_CONFIG__ を書き換えてから reload する。
+        window.location.reload();
+      }
+    };
+    const handleGameOver = (e: Event) => {
+      const detail = (e as CustomEvent<{ score: number }>).detail;
+      onGameOver?.(detail);
+    };
+
+    window.addEventListener("breakout:gameclear", handleGameClear);
+    window.addEventListener("breakout:gameover", handleGameOver);
+    return () => {
+      window.removeEventListener("breakout:gameclear", handleGameClear);
+      window.removeEventListener("breakout:gameover", handleGameOver);
+    };
+  }, [onGameClear, onGameOver]);
 
   useEffect(() => {
     if (startedRef.current) return;

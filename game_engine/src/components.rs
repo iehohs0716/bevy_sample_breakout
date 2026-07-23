@@ -6,6 +6,19 @@ use crate::config::{
     BOTTOM_WALL, LEFT_WALL, RIGHT_WALL, TOP_WALL, WALL_COLOR, WALL_THICKNESS,
 };
 
+/// ゲーム全体の状態を Bevy の States で管理する。状態遷移は Rust 側が担い、
+/// 状態に入った瞬間（`OnEnter`）にフロント(JS)へ通知する（`notify` 参照）。
+/// - `Playing` : プレイ中（初期状態）。ゲームプレイ system はこの状態でのみ動く。
+/// - `Cleared` : 全ブロックを破壊した（クリア）。進入時に `breakout:gameclear` を通知。
+/// - `GameOver`: ゲームオーバー。進入時に `breakout:gameover` を通知（遷移条件は将来実装）。
+#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum GameState {
+    #[default]
+    Playing,
+    Cleared,
+    GameOver,
+}
+
 #[derive(Component)]
 pub struct Paddle;
 

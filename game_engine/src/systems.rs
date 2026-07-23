@@ -7,8 +7,10 @@ use bevy::{
 };
 
 use crate::components::{
-    Ball, BallCollided, Brick, Collider, CollisionSound, Paddle, Score, ScoreboardUi, Velocity,
+    Ball, BallCollided, Brick, Collider, CollisionSound, GameState, Paddle, Score, ScoreboardUi,
+    Velocity,
 };
+use crate::notify::{notify_game_clear, notify_game_over};
 use crate::config::{
     BALL_DIAMETER, LEFT_WALL, PADDLE_PADDING, PADDLE_SIZE, PADDLE_SPEED, RIGHT_WALL, WALL_THICKNESS,
 };
@@ -106,6 +108,31 @@ pub fn check_for_collisions(
             }
         }
     }
+}
+
+/// 全ブロックが無くなったらクリア状態へ遷移する。`Playing` 中のみ動作させる想定
+/// （ブロックは `Startup` で spawn 済みなので、最初の `Update` フレームには存在する）。
+/// 実際の JS 通知は状態遷移側（`OnEnter(GameState::Cleared)` → `on_game_clear`）で行う。
+pub fn check_game_clear(
+    bricks: Query<(), With<Brick>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if bricks.is_empty() {
+        next_state.set(GameState::Cleared);
+    }
+}
+
+/// クリア状態に入った瞬間に一度だけ、フロント(JS)へゲームクリアを通知する。
+/// `OnEnter(GameState::Cleared)` に登録するので、状態遷移につき 1 回だけ走る。
+pub fn on_game_clear(score: Res<Score>) {
+    notify_game_clear(score.0);
+}
+
+/// ゲームオーバー状態に入った瞬間に一度だけ、フロント(JS)へ通知する。
+/// `OnEnter(GameState::GameOver)` に登録する。現状は `GameOver` への遷移が無いので発火しないが、
+/// 将来の遷移（ボール落下等）に備えて用意しておく。
+pub fn on_game_over(score: Res<Score>) {
+    notify_game_over(score.0);
 }
 
 pub fn play_collision_sound(
