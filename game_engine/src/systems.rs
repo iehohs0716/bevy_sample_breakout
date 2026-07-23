@@ -136,6 +136,14 @@ pub fn check_for_collisions(
 ) {
     let (mut ball_velocity, mut ball_transform) = ball_query.into_inner();
 
+    // collider_query は「1エンティティぶんの情報セット」を1周ごとに返す。
+    // タプルの各要素はどれも、その周で扱っている 1 個のエンティティに紐づく情報。
+    //   1周目: ブロックAの (id, ブロックAのTransform, Some(Brick), None)
+    //   2周目: ブロックBの (id, ブロックBのTransform, Some(Brick), None)
+    //   …
+    //   n周目: バーの     (id, バーのTransform,       None,        None)
+    //   …     壁の       (id, 壁のTransform,         None,        None)
+    //   …     DeathZone  (id, 下端のTransform,       None,        Some(DeathZone))
     for (collider_entity, collider_transform, maybe_brick, maybe_death) in &collider_query {
         let collision = ball_collision(
             BoundingCircle::new(ball_transform.translation.truncate(), BALL_DIAMETER / 2.),
