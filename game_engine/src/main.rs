@@ -21,15 +21,16 @@ mod systems;
 
 use bevy::prelude::*;
 
-use components::{GameState, Score};
+use components::{GameState, Lives, Score};
+use config::INITIAL_LIVES;
 use injection::{
     injected_background_image, injected_brick_image, injected_brick_layout, BackgroundOverride,
     BrickImageOverride, BrickLayoutOverride,
 };
 use setup::setup;
 use systems::{
-    apply_velocity, check_for_collisions, check_game_clear, move_paddle, on_game_clear,
-    on_game_over, play_collision_sound, update_scoreboard,
+    apply_velocity, check_for_collisions, check_game_clear, launch_ball_on_click, move_paddle,
+    on_game_clear, on_game_over, play_collision_sound, reset_game, update_lives, update_scoreboard,
 };
 
 fn main() {
@@ -50,6 +51,7 @@ fn main() {
             ..default()
         }))
         .insert_resource(Score(0))
+        .insert_resource(Lives(INITIAL_LIVES))
         // 背景画像を比率維持で置くため、余白（レターボックス）は黒で塗る。
         .insert_resource(ClearColor(Color::BLACK))
         // ゲーム状態を Rust 側で管理する（初期状態は Playing）。
@@ -67,8 +69,14 @@ fn main() {
         )
         // 全ブロック破壊の判定もプレイ中のみ。0 になったら Cleared へ遷移する。
         .add_systems(Update, check_game_clear.run_if(in_state(GameState::Playing)))
-        .add_systems(Update, update_scoreboard)
-        // 状態に入った瞬間に一度だけ、フロント(JS)へ通知する。
+        .add_systems(Update, (update_scoreboard, update_lives))
+        // GameStart に入るたびに盤面をリセットし、クリックでボール発射 → Playing へ。
+        .add_systems(OnEnter(GameState::GameStart), reset_game)
+        .add_systems(
+            Update,
+            launch_ball_on_click.run_if(in_state(GameState::GameStart)),
+        )
+        // 状態に入った瞬間に一度だけ、通知や再スタート処理を行う。
         .add_systems(OnEnter(GameState::Cleared), on_game_clear)
         .add_systems(OnEnter(GameState::GameOver), on_game_over)
         .add_observer(play_collision_sound)

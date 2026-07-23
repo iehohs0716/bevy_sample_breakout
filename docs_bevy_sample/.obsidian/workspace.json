@@ -185,6 +185,10 @@
   },
   "active": "52e1d04ce69ae92c",
   "lastOpenFiles": [
+    "20260723_bevy-assets-handle-add-pattern.md",
+    "20260723_rust-tuple-struct-and-dot-zero.md",
+    "20260723_deref-newtype-vs-dot-zero.md",
+    "20260723_ball-lifecycle.md",
     "20260717_bevy-add-systems-schedule-labels.md",
     "20260717_wasm-dispatch-event-mechanism.md",
     "20260717_game-state-and-clear-notification-impl.md",

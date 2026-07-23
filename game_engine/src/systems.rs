@@ -7,12 +7,14 @@ use bevy::{
 };
 
 use crate::components::{
-    Ball, BallCollided, Brick, Collider, CollisionSound, GameState, Paddle, Score, ScoreboardUi,
-    Velocity,
+    Ball, BallCollided, Brick, Collider, CollisionSound, DeathZone, GameAssets, GameState, Lives,
+    LivesUi, Paddle, Score, ScoreboardUi, Velocity,
 };
 use crate::notify::{notify_game_clear, notify_game_over};
+use crate::rendering::spawn_brick;
 use crate::config::{
-    BALL_DIAMETER, LEFT_WALL, PADDLE_PADDING, PADDLE_SIZE, PADDLE_SPEED, RIGHT_WALL, WALL_THICKNESS,
+    BALL_DIAMETER, BALL_SPEED, BALL_STARTING_POSITION, INITIAL_BALL_DIRECTION, INITIAL_LIVES,
+    LEFT_WALL, PADDLE_PADDING, PADDLE_SIZE, PADDLE_SPEED, RIGHT_WALL, WALL_THICKNESS,
 };
 
 pub fn move_paddle(
@@ -57,15 +59,87 @@ pub fn update_scoreboard(
     *writer.text(*score_root, 1) = score.to_string();
 }
 
+pub fn update_lives(
+    lives: Res<Lives>,
+    lives_root: Single<Entity, (With<LivesUi>, With<Text>)>,
+    mut writer: TextUiWriter,
+) {
+    *writer.text(*lives_root, 1) = lives.to_string();
+}
+
+/// `GameStart` に入るたびに盤面を初期状態へ戻す（スコア/ライフ・ブロック・ボールを初期化）。
+///
+/// 注意: Bevy の仕様上、初期状態 `GameStart` の OnEnter は `PreStartup` より前に 1 回走る
+/// （`StateTransition` が `insert_startup_before(PreStartup)` で登録されるため）。その時点では
+/// `setup`(Startup) 未実行で `GameAssets` も `Ball` も無い。そこで両方が揃うまでは何もせず戻り、
+/// 初回の盤面は `setup` に任せる。ここが実際に効くのは 2 回目以降＝ネイティブでの再スタート
+/// （GameOver → GameStart）のとき。
+pub fn reset_game(
+    mut commands: Commands,
+    mut score: ResMut<Score>,
+    mut lives: ResMut<Lives>,
+    game_assets: Option<Res<GameAssets>>,
+    bricks: Query<Entity, With<Brick>>,
+    mut ball: Query<(&mut Transform, &mut Velocity), With<Ball>>,
+) {
+    // setup 前の早すぎる発火では GameAssets / Ball が未準備。ここでは何もしない。
+    let Some(game_assets) = game_assets else {
+        return;
+    };
+    let Ok((mut transform, mut velocity)) = ball.single_mut() else {
+        return;
+    };
+
+    score.0 = 0;
+    lives.0 = INITIAL_LIVES;
+
+    // 残っているブロックを消してから、確定済みレイアウトで配置し直す。
+    for entity in &bricks {
+        commands.entity(entity).despawn();
+    }
+    for position in &game_assets.brick_layout.positions {
+        spawn_brick(
+            &mut commands,
+            *position,
+            game_assets.brick_layout.cell_size,
+            game_assets.brick_image.clone(),
+        );
+    }
+
+    // ボールを初期位置に戻し、クリックまで静止させる。
+    transform.translation = BALL_STARTING_POSITION;
+    velocity.0 = Vec2::ZERO;
+}
+
+/// `GameStart` 中に左クリックされたらボールを発射し、`Playing` へ遷移する。
+/// これにより「開始待ち → クリックで動き出す」流れを作る。
+pub fn launch_ball_on_click(
+    mouse_input: Res<ButtonInput<MouseButton>>,
+    mut ball_velocity: Single<&mut Velocity, With<Ball>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if mouse_input.just_pressed(MouseButton::Left) {
+        ball_velocity.0 = INITIAL_BALL_DIRECTION.normalize() * BALL_SPEED;
+        next_state.set(GameState::Playing);
+    }
+}
+
 pub fn check_for_collisions(
     mut commands: Commands,
     mut score: ResMut<Score>,
-    ball_query: Single<(&mut Velocity, &Transform), With<Ball>>,
-    collider_query: Query<(Entity, &Transform, Option<&Brick>), With<Collider>>,
+    mut lives: ResMut<Lives>,
+    mut next_state: ResMut<NextState<GameState>>,
+    ball_query: Single<(&mut Velocity, &mut Transform), With<Ball>>,
+    // ball_query が Transform を `&mut` で触るため、Collider 側の `&Transform` と競合しないよう
+    // `Without<Ball>` で両クエリを排他にする（ボールは Collider を持たないので実データは変わらない）。
+    collider_query: Query<
+        (Entity, &Transform, Option<&Brick>, Option<&DeathZone>),
+        (With<Collider>, Without<Ball>),
+    >,
 ) {
-    let (mut ball_velocity, ball_transform) = ball_query.into_inner();
+    let (mut ball_velocity, mut ball_transform) = ball_query.into_inner();
 
-    for (collider_entity, collider_transform, maybe_brick) in &collider_query {
+    for (collider_entity, collider_transform, maybe_brick, maybe_death) in &collider_query {
         let collision = ball_collision(
             BoundingCircle::new(ball_transform.translation.truncate(), BALL_DIAMETER / 2.),
             Aabb2d::new(
@@ -78,10 +152,26 @@ pub fn check_for_collisions(
             // Trigger observers of the "BallCollided" event
             commands.trigger(BallCollided);
 
+            // 下端（DeathZone）に触れたらライフを 1 減らす。反射はさせない。
+            // - 残りライフがあればボールを初期位置・初速に戻して続行する。
+            // - 0 になったら GameOver へ遷移する（ボールはそのフレーム以降、
+            //   `run_if(in_state(Playing))` により停止する）。
+            if maybe_death.is_some() {
+                lives.0 = lives.0.saturating_sub(1);
+                if lives.0 == 0 {
+                    next_state.set(GameState::GameOver);
+                } else {
+                    ball_transform.translation = BALL_STARTING_POSITION;
+                    ball_velocity.0 = INITIAL_BALL_DIRECTION.normalize() * BALL_SPEED;
+                }
+                // ボールをリセットしたので、このフレームの残りの衝突判定は打ち切る。
+                break;
+            }
+
             // Bricks should be despawned and increment the scoreboard on collision
             if maybe_brick.is_some() {
                 commands.entity(collider_entity).despawn();
-                **score += 1;
+                score.0 += 1;
             }
 
             // Reflect the ball's velocity when it collides
@@ -128,11 +218,19 @@ pub fn on_game_clear(score: Res<Score>) {
     notify_game_clear(score.0);
 }
 
-/// ゲームオーバー状態に入った瞬間に一度だけ、フロント(JS)へ通知する。
-/// `OnEnter(GameState::GameOver)` に登録する。現状は `GameOver` への遷移が無いので発火しないが、
-/// 将来の遷移（ボール落下等）に備えて用意しておく。
-pub fn on_game_over(score: Res<Score>) {
+/// ゲームオーバー状態に入った瞬間に一度だけ実行する。`OnEnter(GameState::GameOver)` に登録。
+/// - WASM: `breakout:gameover` を通知し、遷移は React に委ねる（クリアと同じ思想）。
+/// - ネイティブ: JS 通知は no-op なのでそのままだと画面が固まる。代わりに `GameStart` へ戻し、
+///   `reset_game` で盤面を作り直して再プレイできるようにする。
+/// `next_state` はネイティブでのみ使うため、WASM では引数ごと省く（未使用警告の回避）。
+pub fn on_game_over(
+    score: Res<Score>,
+    #[cfg(not(target_arch = "wasm32"))] mut next_state: ResMut<NextState<GameState>>,
+) {
     notify_game_over(score.0);
+
+    #[cfg(not(target_arch = "wasm32"))]
+    next_state.set(GameState::GameStart);
 }
 
 pub fn play_collision_sound(

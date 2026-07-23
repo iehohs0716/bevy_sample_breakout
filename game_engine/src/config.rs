@@ -24,6 +24,10 @@ pub const RIGHT_WALL: f32 = 450.;
 pub const BOTTOM_WALL: f32 = -300.;
 pub const TOP_WALL: f32 = 300.;
 
+// プレイヤーの初期ライフ数。ボールが下端（DeathZone）に触れるたびに 1 減り、
+// 0 になると GameOver へ遷移する。
+pub const INITIAL_LIVES: usize = 5;
+
 pub const BRICK_SIZE: Vec2 = Vec2::new(50., 30.);
 // These values are exact
 pub const GAP_BETWEEN_PADDLE_AND_BRICKS: f32 = 270.0;

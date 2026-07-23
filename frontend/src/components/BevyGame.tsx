@@ -38,18 +38,19 @@ type BevyGameProps = {
   brickImage?: string;
   /**
    * ゲームクリア（全ブロック破壊）を Bevy(WASM) が検知したときに呼ばれる。
-   * Bevy 側は `window.dispatchEvent(new CustomEvent("breakout:gameclear", { detail: { score } }))`
-   * を投げるだけで、遷移（リロード/画面移動）は React が担う。未指定の場合は既定で
-   * `window.location.reload()`（＝リロードして次ゲーム）を行う。遷移先を変えたい場合は
-   * このコールバックで上書きする（例: 結果画面へ `location.href = ...`）。
+   * Bevy 側は `window.dispatchEvent(new CustomEvent("breakout:gameclear",
+   * { detail: { result: "clear", score } }))` を投げるだけで、遷移（リロード/画面移動）は
+   * React が担う。未指定の場合は既定で `window.location.reload()`（＝リロードして次ゲーム）を
+   * 行う。遷移先を変えたい場合はこのコールバックで上書きする（例: 結果画面へ `location.href = ...`）。
    */
-  onGameClear?: (detail: { score: number }) => void;
+  onGameClear?: (detail: { result: string; score: number }) => void;
   /**
-   * ゲームオーバーを Bevy(WASM) が検知したときに呼ばれる（`breakout:gameover`）。
-   * 現状の Bevy 側は GameOver への遷移条件が未実装なので発火しないが、将来に備えて用意する。
-   * `onGameClear` と同様、遷移は React 側でこのコールバックに実装する。
+   * ゲームオーバー（ライフ 0）を Bevy(WASM) が検知したときに呼ばれる（`breakout:gameover`、
+   * `detail.result === "gameover"`）。`onGameClear` と対称で、未指定の場合は既定で
+   * `window.location.reload()`（＝リロードして最初から）を行う。ゲームオーバー専用の遷移に
+   * したい場合はこのコールバックで上書きする。クリアとの区別は `detail.result` で行う。
    */
-  onGameOver?: (detail: { score: number }) => void;
+  onGameOver?: (detail: { result: string; score: number }) => void;
 };
 
 /**
@@ -81,7 +82,7 @@ export function BevyGame({
   // Bevy 側は状態遷移時に CustomEvent を投げるだけで、URL は一切知らない。
   useEffect(() => {
     const handleGameClear = (e: Event) => {
-      const detail = (e as CustomEvent<{ score: number }>).detail;
+      const detail = (e as CustomEvent<{ result: string; score: number }>).detail;
       if (onGameClear) {
         onGameClear(detail);
       } else {
@@ -91,8 +92,15 @@ export function BevyGame({
       }
     };
     const handleGameOver = (e: Event) => {
-      const detail = (e as CustomEvent<{ score: number }>).detail;
-      onGameOver?.(detail);
+      const detail = (e as CustomEvent<{ result: string; score: number }>).detail;
+      if (onGameOver) {
+        onGameOver(detail);
+      } else {
+        // 既定挙動: クリアと対称に、リロードして最初から遊べるようにする。
+        // ゲームオーバー専用の遷移（結果画面へ移動など）にしたい場合は onGameOver で上書きする。
+        // クリアかゲームオーバーかは detail.result（"clear" / "gameover"）で区別できる。
+        window.location.reload();
+      }
     };
 
     window.addEventListener("breakout:gameclear", handleGameClear);

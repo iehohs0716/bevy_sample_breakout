@@ -11,31 +11,34 @@
 
 /// ゲームクリア（全ブロック破壊）を JS に通知する。
 /// React 側は `window.addEventListener("breakout:gameclear", ...)` で受けて遷移する。
+/// `detail.result` は `"clear"`（`breakout:gameover` の `"gameover"` と区別できる）。
 #[cfg(target_arch = "wasm32")]
 pub fn notify_game_clear(score: usize) {
-    dispatch_event("breakout:gameclear", score);
+    dispatch_event("breakout:gameclear", "clear", score);
 }
 
 /// ネイティブビルドでは JS が無いので no-op。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn notify_game_clear(_score: usize) {}
 
-/// ゲームオーバーを JS に通知する。
+/// ゲームオーバー（ライフ 0）を JS に通知する。
 /// React 側は `window.addEventListener("breakout:gameover", ...)` で受けて遷移する。
-/// （現状は遷移条件が未実装なので発火しないが、将来ボール落下等で使う想定で用意する。）
+/// `detail.result` は `"gameover"`（クリアの `"clear"` と区別できる）。
 #[cfg(target_arch = "wasm32")]
 pub fn notify_game_over(score: usize) {
-    dispatch_event("breakout:gameover", score);
+    dispatch_event("breakout:gameover", "gameover", score);
 }
 
 /// ネイティブビルドでは JS が無いので no-op。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn notify_game_over(_score: usize) {}
 
-/// Web ビルド専用。`window` に `CustomEvent`（`detail: { score }`）を dispatch する共通処理。
+/// Web ビルド専用。`window` に `CustomEvent`（`detail: { result, score }`）を dispatch する共通処理。
+/// `result` はクリア/ゲームオーバーを区別する属性（`"clear"` / `"gameover"`）。イベント名でも
+/// 区別できるが、`detail.result` を見れば 1 つのハンドラでまとめて分岐できる。
 /// window が取れない / イベント生成に失敗した場合は warn するだけで、ゲーム自体は続行する。
 #[cfg(target_arch = "wasm32")]
-fn dispatch_event(name: &str, score: usize) {
+fn dispatch_event(name: &str, result: &str, score: usize) {
     use bevy::prelude::warn;
     use wasm_bindgen::JsValue;
     use web_sys::CustomEventInit;
@@ -45,8 +48,13 @@ fn dispatch_event(name: &str, score: usize) {
         return;
     };
 
-    // detail に { score } を載せる。React 側は `e.detail.score` で読める。
+    // detail に { result, score } を載せる。React 側は `e.detail.result` / `e.detail.score` で読める。
     let detail = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(
+        &detail,
+        &JsValue::from_str("result"),
+        &JsValue::from_str(result),
+    );
     let _ = js_sys::Reflect::set(
         &detail,
         &JsValue::from_str("score"),

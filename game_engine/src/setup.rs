@@ -4,13 +4,13 @@
 use bevy::prelude::*;
 
 use crate::components::{
-    Ball, Collider, CollisionSound, Paddle, ScoreboardUi, Velocity, Wall, WallLocation,
+    Ball, Collider, CollisionSound, DeathZone, GameAssets, LivesUi, Paddle, ScoreboardUi, Velocity,
+    Wall, WallLocation,
 };
 use crate::config::{
-    BACKGROUND_IMAGE_PATH, BACKGROUND_SIZE, BALL_COLOR, BALL_DIAMETER, BALL_SPEED,
-    BALL_STARTING_POSITION, BOTTOM_WALL, GAP_BETWEEN_PADDLE_AND_FLOOR, INITIAL_BALL_DIRECTION,
-    PADDLE_COLOR, PADDLE_SIZE, SCORE_COLOR, SCOREBOARD_FONT_SIZE, SCOREBOARD_TEXT_PADDING,
-    TEXT_COLOR,
+    BACKGROUND_IMAGE_PATH, BACKGROUND_SIZE, BALL_COLOR, BALL_DIAMETER, BALL_STARTING_POSITION,
+    BOTTOM_WALL, GAP_BETWEEN_PADDLE_AND_FLOOR, PADDLE_COLOR, PADDLE_SIZE, SCORE_COLOR,
+    SCOREBOARD_FONT_SIZE, SCOREBOARD_TEXT_PADDING, TEXT_COLOR,
 };
 use crate::injection::{
     default_brick_layout, BackgroundOverride, BrickImageOverride, BrickLayoutOverride,
@@ -70,45 +70,72 @@ pub fn setup(
     ));
 
     // Ball
+    // 初速は 0（静止）。GameStart 中の左クリックで発射する（`launch_ball_on_click`）。
+    // 盤面の初期化（位置・速度リセット）は `OnEnter(GameStart)` の `reset_game` が担う。
     commands.spawn((
         Mesh2d(meshes.add(Circle::default())),
         MeshMaterial2d(materials.add(BALL_COLOR)),
         Transform::from_translation(BALL_STARTING_POSITION)
             .with_scale(Vec2::splat(BALL_DIAMETER).extend(1.)),
         Ball,
-        Velocity(INITIAL_BALL_DIRECTION.normalize() * BALL_SPEED),
+        Velocity(Vec2::ZERO),
     ));
 
-    // Scoreboard
+    // Scoreboard + Lives
+    // 画面左上に横並びで「Lives: N   Score: M」と並べる（Lives が Score の左側）。
+    // 横並び（flex Row）のコンテナに、Lives → Score の順で子として置く。
     commands.spawn((
-        Text::new("Score: "),
-        TextFont {
-            font_size: SCOREBOARD_FONT_SIZE,
-            ..default()
-        },
-        TextColor(TEXT_COLOR),
-        ScoreboardUi,
         Node {
             position_type: PositionType::Absolute,
             top: SCOREBOARD_TEXT_PADDING,
             left: SCOREBOARD_TEXT_PADDING,
+            column_gap: Val::Px(20.0),
             ..default()
         },
-        children![(
-            TextSpan::default(),
-            TextFont {
-                font_size: SCOREBOARD_FONT_SIZE,
-                ..default()
-            },
-            TextColor(SCORE_COLOR),
-        )],
+        children![
+            (
+                Text::new("Lives: "),
+                TextFont {
+                    font_size: SCOREBOARD_FONT_SIZE,
+                    ..default()
+                },
+                TextColor(TEXT_COLOR),
+                LivesUi,
+                children![(
+                    TextSpan::default(),
+                    TextFont {
+                        font_size: SCOREBOARD_FONT_SIZE,
+                        ..default()
+                    },
+                    TextColor(SCORE_COLOR),
+                )],
+            ),
+            (
+                Text::new("Score: "),
+                TextFont {
+                    font_size: SCOREBOARD_FONT_SIZE,
+                    ..default()
+                },
+                TextColor(TEXT_COLOR),
+                ScoreboardUi,
+                children![(
+                    TextSpan::default(),
+                    TextFont {
+                        font_size: SCOREBOARD_FONT_SIZE,
+                        ..default()
+                    },
+                    TextColor(SCORE_COLOR),
+                )],
+            ),
+        ],
     ));
 
     // Walls
+    // 下端は反射する壁ではなく DeathZone（触れるとライフが減る領域）にする。
     commands.spawn(Wall::new(WallLocation::Left));
     commands.spawn(Wall::new(WallLocation::Right));
-    commands.spawn(Wall::new(WallLocation::Bottom));
     commands.spawn(Wall::new(WallLocation::Top));
+    commands.spawn(DeathZone::new());
 
     // Bricks
     // React（JS）が渡したブロック用画像を `Assets<Image>` に登録し、「ハンドル + 元のピクセル寸法」
@@ -119,14 +146,23 @@ pub fn setup(
         (images.add(image), size)
     });
 
-    // ブロック配置は「レイアウトを取得 → 各位置に spawn」の一本道。React（JS）が配置を
-    // 渡していればそれを、無ければアリーナを敷き詰めるデフォルト配置を使う。どちらも同じ
-    // `BrickLayout` なので、以降の spawn ロジックを分岐させる必要はない。
-    let layout = brick_layout_override
+    // ブロック配置を確定する。React（JS）が配置を渡していればそれを、無ければアリーナを敷き詰める
+    // デフォルト配置を使う。
+    let brick_layout = brick_layout_override
         .0
         .take()
         .unwrap_or_else(|| default_brick_layout(paddle_y));
-    for position in &layout.positions {
-        spawn_brick(&mut commands, *position, layout.cell_size, brick_image.clone());
+
+    // 初期盤面のブロックを spawn する。初期状態 GameStart の OnEnter（reset_game）は Bevy の仕様上
+    // Startup より前に 1 回走り、その時点では GameAssets が未生成で何もしない。よって初回の配置は
+    // setup が担い、reset_game は 2 回目以降（GameOver→GameStart の再スタート）で作り直す。
+    for position in &brick_layout.positions {
+        spawn_brick(&mut commands, *position, brick_layout.cell_size, brick_image.clone());
     }
+
+    // 再スタートでブロックを配置し直せるよう、確定した配置と画像を保持しておく。
+    commands.insert_resource(GameAssets {
+        brick_layout,
+        brick_image,
+    });
 }
