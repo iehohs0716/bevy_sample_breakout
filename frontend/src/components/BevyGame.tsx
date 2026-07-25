@@ -188,7 +188,6 @@ export function BevyGame({
       const wasmUrl = new URL("/wasm/breakout.js", window.location.origin).href;
       const wasmModule = await import(/* @vite-ignore */ wasmUrl);
 
-      // .wasm(約57MB)はファイル名が固定のためブラウザが旧ビルドをキャッシュしやすい。
       // クエリを付けて明示的に渡し、リロード時に必ず最新を読ませる（開発時のキャッシュ事故防止）。
       const wasmBin = new URL(
         `/wasm/breakout_bg.wasm?t=${Date.now()}`,

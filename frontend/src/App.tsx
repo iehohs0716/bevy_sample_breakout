@@ -4,8 +4,8 @@ import "./App.css";
 // 背景画像はここ（React 側）から渡す。ゲーム本体(WASM)は 1 ビルドのまま、この URL を
 // 差し替えるだけで別背景のブロック崩しを提供できる。同一オリジンの相対パスでも、
 // S3 等の外部絶対 URL でも指定可能（外部 URL は配信元の CORS 許可が必要）。
-const BACKGROUND_URL = "/assets/backgrounds/Ameca_robot.jpg";
-//const BACKGROUND_URL ="https://images.ygoprodeck.com/images/cards_cropped/6983839.jpg";
+//const BACKGROUND_URL = "/assets/backgrounds/Ameca_robot.jpg";
+const BACKGROUND_URL = "https://picsum.photos/id/1015/900/600.jpg";
 
 // 初期ブロック配置もゲーム本体(WASM)を焼き直さず React 側から差し替える。座標は Bevy の
 // ワールド座標（中心原点・y 上向き・1 単位 = 1px。アリーナは x∈[-450,450], y∈[-300,300]）で、
