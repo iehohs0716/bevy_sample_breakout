@@ -8,6 +8,7 @@
 //! - `injection`: React(JS) から渡される初期化パラメータの読み取り
 //! - `notify`: ゲームイベント（クリア等）をフロント(JS)へ通知
 //! - `rendering`: 画像フィット計算とブロック描画ヘルパー
+//! - `tear`: 破れた辺のギザギザ輪郭を中点変位法で生成する
 //! - `setup`: 起動時セットアップ system
 //! - `systems`: 毎フレームのゲームプレイ system
 
@@ -18,6 +19,7 @@ mod notify;
 mod rendering;
 mod setup;
 mod systems;
+mod tear;
 
 use bevy::prelude::*;
 

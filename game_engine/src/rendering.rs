@@ -14,9 +14,7 @@ use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 
 use crate::components::{Brick, BrickCell, BrickFill, BrokenEdges, Collider};
-use crate::config::{
-    BOTTOM_WALL, BRICK_COLOR, LEFT_WALL, RIGHT_WALL, TEAR_DEPTH, TEAR_ROUGHNESS, TOP_WALL,
-};
+use crate::config::{BOTTOM_WALL, BRICK_COLOR, LEFT_WALL, RIGHT_WALL, TOP_WALL};
 
 /// ブロックの spawn / 再構築に要る 2 つの `Assets` をまとめた `SystemParam`。
 /// `spawn_brick` を呼ぶ `setup`・`reset_game` の両方でこの 2 つは常にセットで必要になるため、
@@ -158,57 +156,6 @@ fn vertex_uv(p: Vec2, size: Vec2, fill: &BrickFill) -> [f32; 2] {
     }
 }
 
-/// 決定的な疑似乱数（xorshift32）。同じブロック・同じ辺は毎回同じギザギザになり再現性がある。
-struct TearRng(u32);
-
-impl TearRng {
-    fn new(seed: u32) -> Self {
-        Self(seed | 1) // 0 だとxorshiftが退化するので奇数化
-    }
-
-    fn next_u32(&mut self) -> u32 {
-        let mut x = self.0;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.0 = x;
-        x
-    }
-
-    fn next_unit(&mut self) -> f32 {
-        (self.next_u32() >> 8) as f32 / (1u32 << 24) as f32
-    }
-}
-
-/// ブロックの盤面座標と辺番号から決定的な種を作る。同じセル・同じ辺なら常に同じギザギザになる。
-fn seed_for(cell: BrickCell, edge_index: u32) -> u32 {
-    let r = cell.row as u32;
-    let c = cell.col as u32;
-    r.wrapping_mul(73856093)
-        ^ c.wrapping_mul(19349663)
-        ^ edge_index.wrapping_mul(83492791)
-        ^ 0x9E3779B9
-}
-
-/// 中点変位法。`a`→`b` の辺の間に、`depth` 段まで再帰的に変位点を差し込んで `out` に積む
-/// （`a` 自身と `b` 自身は積まない＝呼び出し側が両端を管理する前提）。再帰ごとに辺長が半分に
-/// なるので振れ幅（`amplitude`）も自動的に減衰する。
-fn midpoint_displace(a: Vec2, b: Vec2, depth: u32, roughness: f32, rng: &mut TearRng, out: &mut Vec<Vec2>) {
-    if depth == 0 {
-        return;
-    }
-    let mid = (a + b) / 2.0;
-    let edge = b - a;
-    let normal = Vec2::new(-edge.y, edge.x).normalize_or_zero();
-    let amplitude = edge.length() * roughness;
-    let offset = (rng.next_unit() * 2.0 - 1.0) * amplitude;
-    let displaced = mid + normal * offset;
-
-    midpoint_displace(a, displaced, depth - 1, roughness, rng, out);
-    out.push(displaced);
-    midpoint_displace(displaced, b, depth - 1, roughness, rng, out);
-}
-
 /// ローカル原点(0,0)中心、四隅 `(±size.x/2, ±size.y/2)` の矩形を輪郭とし、`broken` で
 /// true になっている辺だけ中点変位法のギザギザに置き換えたメッシュを構築する。中心
 /// (`Vec2::ZERO`)を追加した扇形三角形分割（fan triangulation）を使うため、輪郭は常に
@@ -230,8 +177,9 @@ fn build_brick_mesh(size: Vec2, cell: BrickCell, broken: &BrokenEdges, fill: &Br
         let end = corners[(i + 1) % 4];
         boundary.push(start);
         if edge_broken[i] {
-            let mut rng = TearRng::new(seed_for(cell, i as u32));
-            midpoint_displace(start, end, TEAR_DEPTH, TEAR_ROUGHNESS, &mut rng, &mut boundary);
+            // 破れた辺だけ、中点変位法のギザギザ輪郭に置き換える（実装は `tear` モジュール）。
+            // この中で、boundaryに追加の頂点が追加されていく
+            crate::tear::push_torn_edge(cell, i as u32, start, end, &mut boundary);
         }
     }
 
@@ -343,18 +291,5 @@ mod tests {
                 (i + 1) % n
             );
         }
-    }
-
-    /// 同じセル・同じ辺なら常に同じギザギザになる（決定的）ことを確認する。
-    #[test]
-    fn seed_for_is_deterministic_per_cell_and_edge() {
-        let cell = BrickCell { row: 2, col: 9 };
-        assert_eq!(seed_for(cell, 0), seed_for(cell, 0));
-        assert_ne!(seed_for(cell, 0), seed_for(cell, 1), "辺が違えばseedも違うはず");
-        assert_ne!(
-            seed_for(cell, 0),
-            seed_for(BrickCell { row: 9, col: 2 }, 0),
-            "セルが違えばseedも違うはず"
-        );
     }
 }
