@@ -56,3 +56,10 @@ pub const BRICK_COLOR: Color = Color::srgb(0.5, 0.5, 1.0);
 pub const WALL_COLOR: Color = Color::srgb(0.8, 0.8, 0.8);
 pub const TEXT_COLOR: Color = Color::srgb(0.5, 0.5, 1.0);
 pub const SCORE_COLOR: Color = Color::srgb(1.0, 0.5, 0.5);
+
+// ブロック破壊面のギザギザ（中点変位法）関連の定数。
+/// 中点変位の再帰段数。段数ぶん辺が細分化される。
+pub const TEAR_DEPTH: u32 = 2;
+/// 振れ幅の辺長に対する比率。既定のブロック寸法(50x30)の半分より十分小さく、
+/// 中心からの扇形三角形分割が破綻しない(star-shaped from center)範囲に収まる値。
+pub const TEAR_ROUGHNESS: f32 = 0.45;

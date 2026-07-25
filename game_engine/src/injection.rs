@@ -7,6 +7,7 @@
 
 use bevy::prelude::*;
 
+use crate::components::BrickCell;
 use crate::config::{
     BRICK_SIZE, GAP_BETWEEN_BRICKS, GAP_BETWEEN_BRICKS_AND_CEILING, GAP_BETWEEN_BRICKS_AND_SIDES,
     GAP_BETWEEN_PADDLE_AND_BRICKS, LEFT_WALL, RIGHT_WALL, TOP_WALL,
@@ -101,6 +102,7 @@ pub fn injected_background_image() -> Option<Image> {
 pub struct BrickLayout {
     pub positions: Vec<Vec2>,
     pub cell_size: Vec2,
+    pub cells: Vec<BrickCell>,
 }
 
 /// React（JS）由来の配置が無いときに使う、アリーナを敷き詰めるデフォルトのブロック配置を計算して返す。
@@ -131,18 +133,24 @@ pub fn default_brick_layout(paddle_y: f32) -> BrickLayout {
     let offset_y = bottom_edge_of_bricks + BRICK_SIZE.y / 2.;
 
     let mut positions = Vec::with_capacity(n_rows * n_columns);
+    let mut cells = Vec::with_capacity(n_rows * n_columns);
     for row in 0..n_rows {
         for column in 0..n_columns {
             positions.push(Vec2::new(
                 offset_x + column as f32 * (BRICK_SIZE.x + GAP_BETWEEN_BRICKS),
                 offset_y + row as f32 * (BRICK_SIZE.y + GAP_BETWEEN_BRICKS),
             ));
+            cells.push(BrickCell {
+                row: row as i32,
+                col: column as i32,
+            });
         }
     }
 
     BrickLayout {
         positions,
         cell_size: BRICK_SIZE,
+        cells,
     }
 }
 
@@ -204,9 +212,28 @@ pub fn injected_brick_layout() -> Option<BrickLayout> {
         })
         .unwrap_or(BRICK_SIZE);
 
+    // JS 側の座標は必ずしも 0 始まりではないので、最小値を格子の原点として行列座標を逆算する
+    // (格子に整合していることは前提とし、四則演算のみで求める)。
+    let origin_x = positions
+        .iter()
+        .map(|p| p.x)
+        .fold(f32::INFINITY, f32::min);
+    let origin_y = positions
+        .iter()
+        .map(|p| p.y)
+        .fold(f32::INFINITY, f32::min);
+    let cells = positions
+        .iter()
+        .map(|p| BrickCell {
+            row: ((p.y - origin_y) / cell_size.y).round() as i32,
+            col: ((p.x - origin_x) / cell_size.x).round() as i32,
+        })
+        .collect();
+
     Some(BrickLayout {
         positions,
         cell_size,
+        cells,
     })
 }
 

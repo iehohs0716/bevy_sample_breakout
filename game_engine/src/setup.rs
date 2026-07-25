@@ -15,13 +15,12 @@ use crate::config::{
 use crate::injection::{
     default_brick_layout, BackgroundOverride, BrickImageOverride, BrickLayoutOverride,
 };
-use crate::rendering::{contain_fit, spawn_brick};
+use crate::rendering::{contain_fit, spawn_brick, BrickAssets};
 
 // Add the game's entities to our world
 pub fn setup(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut brick_assets: BrickAssets,
     mut images: ResMut<Assets<Image>>,
     mut background_override: ResMut<BackgroundOverride>,
     mut brick_layout_override: ResMut<BrickLayoutOverride>,
@@ -73,8 +72,8 @@ pub fn setup(
     // 初速は 0（静止）。GameStart 中の左クリックで発射する（`launch_ball_on_click`）。
     // 盤面の初期化（位置・速度リセット）は `OnEnter(GameStart)` の `reset_game` が担う。
     commands.spawn((
-        Mesh2d(meshes.add(Circle::default())),
-        MeshMaterial2d(materials.add(BALL_COLOR)),
+        Mesh2d(brick_assets.meshes.add(Circle::default())),
+        MeshMaterial2d(brick_assets.materials.add(BALL_COLOR)),
         Transform::from_translation(BALL_STARTING_POSITION)
             .with_scale(Vec2::splat(BALL_DIAMETER).extend(1.)),
         Ball,
@@ -155,8 +154,15 @@ pub fn setup(
 
     // 各ブロックを配置座標に spawn する（＝起動時の初期盤面）。初回配置は setup が担い、
     // 敗北後の再スタート（GameOver→GameRestart）でのブロック作り直しは reset_game が担う。
-    for position in &brick_layout.positions {
-        spawn_brick(&mut commands, *position, brick_layout.cell_size, brick_image.clone());
+    for (position, cell) in brick_layout.positions.iter().zip(&brick_layout.cells) {
+        spawn_brick(
+            &mut commands,
+            &mut brick_assets,
+            *position,
+            brick_layout.cell_size,
+            *cell,
+            brick_image.clone(),
+        );
     }
 
     // 再スタートでブロックを配置し直せるよう、確定した配置と画像を保持しておく。

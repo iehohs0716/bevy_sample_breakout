@@ -7,11 +7,12 @@ use bevy::{
 };
 
 use crate::components::{
-    Ball, BallCollided, Brick, Collider, CollisionSound, DeathZone, GameAssets, GameState, Lives,
-    LivesUi, Paddle, Score, ScoreboardUi, Velocity,
+    Ball, BallCollided, Brick, BrickCell, BrickDestroyed, BrickFill, BrokenEdges, Collider,
+    CollisionSound, DeathZone, GameAssets, GameState, Lives, LivesUi, Paddle, Score, ScoreboardUi,
+    Velocity,
 };
 use crate::notify::{notify_game_clear, notify_game_over};
-use crate::rendering::spawn_brick;
+use crate::rendering::{spawn_brick, BrickAssets};
 use crate::config::{
     BALL_DIAMETER, BALL_SPEED, BALL_STARTING_POSITION, INITIAL_BALL_DIRECTION, INITIAL_LIVES,
     LEFT_WALL, PADDLE_PADDING, PADDLE_SIZE, PADDLE_SPEED, RIGHT_WALL, WALL_THICKNESS,
@@ -80,6 +81,7 @@ pub fn update_lives(
 /// ガードや空振り処理は不要で、`Res` / `Single` を素直に使える。
 pub fn reset_game(
     mut commands: Commands,
+    mut brick_assets: BrickAssets,
     mut score: ResMut<Score>,
     mut lives: ResMut<Lives>,
     game_assets: Res<GameAssets>,
@@ -93,11 +95,18 @@ pub fn reset_game(
     for entity in &bricks {
         commands.entity(entity).despawn();
     }
-    for position in &game_assets.brick_layout.positions {
+    for (position, cell) in game_assets
+        .brick_layout
+        .positions
+        .iter()
+        .zip(&game_assets.brick_layout.cells)
+    {
         spawn_brick(
             &mut commands,
+            &mut brick_assets,
             *position,
             game_assets.brick_layout.cell_size,
+            *cell,
             game_assets.brick_image.clone(),
         );
     }
@@ -121,6 +130,10 @@ pub fn launch_ball_on_click(
     }
 }
 
+// `collider_query` はタプルの要素数・`Option` の入れ子がそれなりに増えており
+// `clippy::type_complexity` が出るが、型自体は「1エンティティぶんの当たり判定情報」という
+// 単一の意味のまとまりで、`type` 別名を切っても本質的な複雑さは変わらないため警告は抑制する。
+#[allow(clippy::type_complexity)]
 pub fn check_for_collisions(
     mut commands: Commands,
     mut score: ResMut<Score>,
@@ -144,13 +157,17 @@ pub fn check_for_collisions(
     //   n周目: バーの     (id, バーのTransform,       None,        None)
     //   …     壁の       (id, 壁のTransform,         None,        None)
     //   …     DeathZone  (id, 下端のTransform,       None,        Some(DeathZone))
+    // ブロックの格子座標は Brick.cell として持つので、別途 Option<&BrickCell> は要らない。
     for (collider_entity, collider_transform, maybe_brick, maybe_death) in &collider_query {
+        // ブロックは Transform.scale を使わず Brick.size をメッシュ寸法として直接持つので、
+        // 当たり判定の半径もそこから取る（壁/パドル/DeathZone は従来通り scale 基準）。
+        let half_extents = match maybe_brick {
+            Some(brick) => brick.size / 2.0,
+            None => collider_transform.scale.truncate() / 2.0,
+        };
         let collision = ball_collision(
             BoundingCircle::new(ball_transform.translation.truncate(), BALL_DIAMETER / 2.),
-            Aabb2d::new(
-                collider_transform.translation.truncate(),
-                collider_transform.scale.truncate() / 2.,
-            ),
+            Aabb2d::new(collider_transform.translation.truncate(), half_extents),
         );
 
         if let Some(collision) = collision {
@@ -174,9 +191,10 @@ pub fn check_for_collisions(
             }
 
             // Bricks should be despawned and increment the scoreboard on collision
-            if maybe_brick.is_some() {
+            if let Some(brick) = maybe_brick {
                 commands.entity(collider_entity).despawn();
                 score.0 += 1;
+                commands.trigger(BrickDestroyed { cell: brick.cell });
             }
 
             // Reflect the ball's velocity when it collides
@@ -246,6 +264,28 @@ pub fn play_collision_sound(
     commands.spawn((AudioPlayer(sound.clone()), PlaybackSettings::DESPAWN));
 }
 
+/// ブロックが破壊された時、隣接する4方向(上下左右)のブロックのうち、破壊されたブロックと
+/// 接していた辺だけを「破れた境界」にする。かつて隣接ブロックが存在しなかった辺(壁際・隙間)は
+/// この経路を一切通らないので、破れた見た目にならない。
+pub fn mark_broken_edges_on_brick_destroyed(
+    trigger: On<BrickDestroyed>,
+    mut bricks: Query<(&Brick, &mut BrokenEdges)>,
+) {
+    let destroyed = trigger.cell;
+    for (brick, mut broken) in &mut bricks {
+        let cell = brick.cell;
+        if cell.row == destroyed.row + 1 && cell.col == destroyed.col {
+            broken.bottom = true; // 自分は破壊されたセルの真上 → 自分の下辺が破れる
+        } else if cell.row == destroyed.row - 1 && cell.col == destroyed.col {
+            broken.top = true; // 真下 → 上辺が破れる
+        } else if cell.col == destroyed.col + 1 && cell.row == destroyed.row {
+            broken.left = true; // 右隣 → 左辺が破れる
+        } else if cell.col == destroyed.col - 1 && cell.row == destroyed.row {
+            broken.right = true; // 左隣 → 右辺が破れる
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 enum Collision {
     Left,
@@ -276,4 +316,80 @@ fn ball_collision(ball: BoundingCircle, bounding_box: Aabb2d) -> Option<Collisio
     };
 
     Some(side)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cell(row: i32, col: i32) -> BrickCell {
+        BrickCell { row, col }
+    }
+
+    fn spawn_cell(world: &mut World, row: i32, col: i32) -> Entity {
+        world
+            .spawn((
+                Brick {
+                    size: Vec2::ONE,
+                    cell: cell(row, col),
+                    fill: BrickFill::Color(Color::WHITE),
+                },
+                BrokenEdges::default(),
+            ))
+            .id()
+    }
+
+    fn broken(world: &World, entity: Entity) -> BrokenEdges {
+        *world.get::<BrokenEdges>(entity).unwrap()
+    }
+
+    /// `mark_broken_edges_on_brick_destroyed` が row/col の各方向を正しい辺に対応させることを
+    /// 固定化する回帰テスト。CLAUDE.md の規約(row 増加=上, col 増加=右)を前提に、
+    /// 「真上のブロックの下辺」「真下の上辺」「右隣の左辺」「左隣の右辺」が破れ、
+    /// それ以外(隣接しないセル)は変化しないことを確認する。
+    #[test]
+    fn marks_only_the_edge_facing_the_destroyed_neighbor() {
+        let mut world = World::new();
+        world.add_observer(mark_broken_edges_on_brick_destroyed);
+
+        let above = spawn_cell(&mut world, 1, 0);
+        let below = spawn_cell(&mut world, -1, 0);
+        let right = spawn_cell(&mut world, 0, 1);
+        let left = spawn_cell(&mut world, 0, -1);
+        let unrelated = spawn_cell(&mut world, 5, 5);
+        let diagonal = spawn_cell(&mut world, 1, 1);
+
+        world.trigger(BrickDestroyed { cell: cell(0, 0) });
+
+        assert_eq!(
+            broken(&world, above),
+            BrokenEdges { bottom: true, ..Default::default() },
+            "真上のブロックは下辺が破れるはず"
+        );
+        assert_eq!(
+            broken(&world, below),
+            BrokenEdges { top: true, ..Default::default() },
+            "真下のブロックは上辺が破れるはず"
+        );
+        assert_eq!(
+            broken(&world, right),
+            BrokenEdges { left: true, ..Default::default() },
+            "右隣のブロックは左辺が破れるはず"
+        );
+        assert_eq!(
+            broken(&world, left),
+            BrokenEdges { right: true, ..Default::default() },
+            "左隣のブロックは右辺が破れるはず"
+        );
+        assert_eq!(
+            broken(&world, unrelated),
+            BrokenEdges::default(),
+            "隣接しないブロックは変化しないはず"
+        );
+        assert_eq!(
+            broken(&world, diagonal),
+            BrokenEdges::default(),
+            "斜めに隣接するだけのブロックは辺を共有しないので変化しないはず"
+        );
+    }
 }

@@ -27,10 +27,12 @@ use injection::{
     injected_background_image, injected_brick_image, injected_brick_layout, BackgroundOverride,
     BrickImageOverride, BrickLayoutOverride,
 };
+use rendering::redraw_broken_bricks;
 use setup::setup;
 use systems::{
-    apply_velocity, check_for_collisions, check_game_clear, launch_ball_on_click, move_paddle,
-    on_game_clear, on_game_over, play_collision_sound, reset_game, update_lives, update_scoreboard,
+    apply_velocity, check_for_collisions, check_game_clear, launch_ball_on_click,
+    mark_broken_edges_on_brick_destroyed, move_paddle, on_game_clear, on_game_over,
+    play_collision_sound, reset_game, update_lives, update_scoreboard,
 };
 
 fn main() {
@@ -70,6 +72,11 @@ fn main() {
         // 全ブロック破壊の判定もプレイ中のみ。0 になったら Cleared へ遷移する。
         .add_systems(Update, check_game_clear.run_if(in_state(GameState::Playing)))
         .add_systems(Update, (update_scoreboard, update_lives))
+        // `check_for_collisions` の Commands（ブロック despawn / `BrickDestroyed` トリガー）→
+        // `mark_broken_edges_on_brick_destroyed`(observer) → `BrokenEdges` 変更 という一連の後に
+        // 読む必要があるため、`.after` で明示する。Bevy は順序制約のある両者の間に自動で
+        // 同期点（コマンド適用）を挿入するので、これで同一フレーム内の反映が保証される。
+        .add_systems(Update, redraw_broken_bricks.after(check_for_collisions))
         // クリック待ち（GameStart=初回 / GameRestart=敗北後）中の左クリックでボール発射 → Playing へ。
         .add_systems(
             Update,
@@ -82,5 +89,6 @@ fn main() {
         // 敗北後の再スタート（ネイティブのみ）: 盤面を作り直して GameStart へ戻す。
         .add_systems(OnEnter(GameState::GameRestart), reset_game)
         .add_observer(play_collision_sound)
+        .add_observer(mark_broken_edges_on_brick_destroyed)
         .run();
 }
