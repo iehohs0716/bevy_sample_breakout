@@ -18,7 +18,7 @@
 ## 1. `collider_query` の型と意味
 
 ```rust
-// game_engine/src/systems.rs:129
+// game_engine/src/systems.rs:142
 ball_query: Single<(&mut Velocity, &mut Transform), With<Ball>>,
 // ball_query が Transform を `&mut` で触るため、Collider 側の `&Transform` と競合しないよう
 // `Without<Ball>` で両クエリを排他にする（ボールは Collider を持たないので実データは変わらない）。
@@ -82,19 +82,26 @@ Transform の集合」ではなく、**その周に回ってきたエンティ�
 ## 3. 当たり判定の中身
 
 ```rust
-// game_engine/src/systems.rs:140
+// game_engine/src/systems.rs:164
+// ブロックは Transform.scale を使わず Brick.size をメッシュ寸法として直接持つので、
+// 当たり判定の半径もそこから取る（壁/パドル/DeathZone は従来通り scale 基準）。
+let half_extents = match maybe_brick {
+    Some(brick) => brick.size / 2.0,
+    None => collider_transform.scale.truncate() / 2.0,
+};
 let collision = ball_collision(
     BoundingCircle::new(ball_transform.translation.truncate(), BALL_DIAMETER / 2.),
-    Aabb2d::new(
-        collider_transform.translation.truncate(),
-        collider_transform.scale.truncate() / 2.,
-    ),
+    Aabb2d::new(collider_transform.translation.truncate(), half_extents),
 );
 ```
 
 - ボールは **円**（`BoundingCircle`）として扱う。中心 = ボールの位置、半径 = `BALL_DIAMETER / 2`。
 - 相手は **矩形（AABB: 軸並行境界ボックス）**（`Aabb2d`）として扱う。中心 = 相手の位置
-  (`translation`)、半サイズ = 大きさの半分 (`scale / 2`)。
+  (`translation`)、半サイズ = 大きさの半分。
+- 半サイズの取り方は相手の種類で分かれる。**ブロックは `Brick.size / 2`**（ブロックは Sprite では
+  なく動的メッシュで描き `Transform.scale` を大きさに使わないため。詳細は
+  [[20260725_brick-torn-edge-midpoint-displacement]]）、**壁・パドル・DeathZone は従来通り
+  `Transform.scale / 2`**。
 - `truncate()` は `Vec3 → Vec2` へ落とす操作（z を捨てて 2D 化）。当たり判定は 2D 平面で行う。
 
 `ball_collision`（同ファイル下部のヘルパー）が円と矩形の交差を調べ、交差していれば
@@ -120,9 +127,10 @@ if let Some(collision) = collision {
         break;                                    // このフレームの残り衝突判定は打ち切る
     }
 
-    if maybe_brick.is_some() {                     // (B) ブロック Brick
+    if let Some(brick) = maybe_brick {             // (B) ブロック Brick
         commands.entity(collider_entity).despawn();
         score.0 += 1;
+        commands.trigger(BrickDestroyed { cell: brick.cell });
     }
 
     // (C) 反射
@@ -151,6 +159,9 @@ if let Some(collision) = collision {
 
 - `commands.entity(collider_entity).despawn()` でそのブロックを消す。
 - `score.0 += 1` でスコア加算。
+- `commands.trigger(BrickDestroyed { cell: brick.cell })` で破壊イベントを発火し、隣接ブロックの
+  「破れた辺」再描画へつなぐ（[[20260725_brick-torn-edge-midpoint-displacement]]）。破壊セルは
+  `Brick.cell`（不変データを集約した `Brick` のフィールド）から直接取る。
 - **`despawn` は Brick のときだけ**。Paddle・Wall・DeathZone は `Brick` を持たない
   （`maybe_brick` が `None`）ので消えない。ボール・バー・壁が巻き添えで消えることはない。
 
@@ -176,7 +187,7 @@ Bevy は「同一エンティティの `Transform` を、可変と不変で同�
 実際にはボールは `Collider` を持たないので collider_query には元々入らず、
 `Without<Ball>` があってもなくても **実データ上は同じ**。それでも明示しているのは、
 Bevy のクエリ競合チェックにコンパイル／実行時点で「排他だ」と伝え、安全に成立させるため
-（`systems.rs:130` のコメント参照）。
+（`systems.rs:143` のコメント参照）。
 
 ## 6. まとめ
 

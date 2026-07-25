@@ -185,6 +185,13 @@
   },
   "active": "52e1d04ce69ae92c",
   "lastOpenFiles": [
+    "20260725_bevy-handle-clone-pitfall.md",
+    "20260725_rust-match-and-pattern-binding.md",
+    "20260725_bevy-mesh-material-uv-basics.md",
+    "20260725_bevy-dynamic-mesh-build-brick-mesh.md",
+    "20260725_brick-destroyed-observer-event-lifecycle.md",
+    "20260725_brick-torn-edge-midpoint-displacement.md",
+    "20260723_bevy-b0001-query-conflict-without.md",
     "20260723_check-for-collisions-system.md",
     "20260723_bevy-single-into-inner.md",
     "20260723_bevy-init-vs-restart-state.md",
@@ -203,10 +210,6 @@
     "20260715_brick-image-rendering.md",
     "20260711_why-wasm-is-secure.md",
     "20260711_wasm-build-size-optimization.md",
-    "20260711_react-to-bevy-init-params.md",
-    "20260711_wasm-bevy-browser-verification.md",
-    "20260711_react-to-bevy-background-injection.md",
-    "20260711_external-image-cors-and-formats.md",
-    "20260711_bevy-wasm-react-integration.md"
+    "20260711_react-to-bevy-init-params.md"
   ]
 }
