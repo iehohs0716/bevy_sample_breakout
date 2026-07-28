@@ -16,6 +16,7 @@ use crate::rendering::{spawn_brick, BrickAssets};
 use crate::config::{
     BALL_DIAMETER, BALL_SPEED, BALL_STARTING_POSITION, INITIAL_BALL_DIRECTION, INITIAL_LIVES,
     LEFT_WALL, PADDLE_PADDING, PADDLE_SIZE, PADDLE_SPEED, RIGHT_WALL, WALL_THICKNESS,
+    BOTTOM_WALL, GAP_BETWEEN_PADDLE_AND_FLOOR
 };
 
 pub fn move_paddle(
@@ -139,15 +140,18 @@ pub fn check_for_collisions(
     mut score: ResMut<Score>,
     mut lives: ResMut<Lives>,
     mut next_state: ResMut<NextState<GameState>>,
-    ball_query: Single<(&mut Velocity, &mut Transform), With<Ball>>,
-    // ball_query が Transform を `&mut` で触るため、Collider 側の `&Transform` と競合しないよう
-    // `Without<Ball>` で両クエリを排他にする（ボールは Collider を持たないので実データは変わらない）。
+    // ballとpaddleをクエリで取得しておく
+    ball_query: Single<(&mut Velocity, &mut Transform), (With<Ball>, Without<Paddle>)>,
+    paddle_entity: Single<Entity, With<Paddle>>,
     collider_query: Query<
         (Entity, &Transform, Option<&Brick>, Option<&DeathZone>),
         (With<Collider>, Without<Ball>),
     >,
+
 ) {
     let (mut ball_velocity, mut ball_transform) = ball_query.into_inner();
+
+    let paddle_entity = paddle_entity.into_inner();
 
     // collider_query は「1エンティティぶんの情報セット」を1周ごとに返す。
     // タプルの各要素はどれも、その周で扱っている 1 個のエンティティに紐づく情報。
@@ -185,6 +189,11 @@ pub fn check_for_collisions(
                 } else {
                     ball_transform.translation = BALL_STARTING_POSITION;
                     ball_velocity.0 = INITIAL_BALL_DIRECTION.normalize() * BALL_SPEED;
+                    commands.entity(paddle_entity).insert(Transform {
+                        translation: Vec3::new(0.0, BOTTOM_WALL + GAP_BETWEEN_PADDLE_AND_FLOOR, 0.0),
+                        scale: PADDLE_SIZE.extend(1.0),
+                        ..default()
+                    });
                 }
                 // ボールをリセットしたので、このフレームの残りの衝突判定は打ち切る。
                 break;
