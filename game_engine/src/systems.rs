@@ -1,22 +1,34 @@
-//! 毎フレーム走るゲームプレイ system（パドル移動・速度適用・スコア更新・衝突判定）と
-//! 衝突音の再生。
+//! 毎フレーム走るゲームプレイ system（パドル移動・速度適用・スコア更新）と衝突音の再生。
+//! 起動時に一度だけ走る `Startup` system は子モジュール `setup` に、`Update` スケジュールで
+//! 実行される system（ボール衝突判定・ブロック単一ドメインの system・observer）は子モジュール
+//! `update` に、ゲーム終端（クリア／ゲームオーバー）時の JS 通知（通知の実装込み）は子モジュール
+//! `terminate` に分離し、ここで `pub use` して外（`main`）からは `systems::` 経由でまとめて
+//! 見えるようにしている（`main` は `systems` だけを読み、`systems` が `setup` / `update` /
+//! `terminate` を読むという依存の向きにするため）。
 
-use bevy::{
-    math::bounding::{Aabb2d, BoundingCircle, BoundingVolume, IntersectsVolume},
-    prelude::*,
+mod setup;
+pub use setup::setup;
+
+mod update;
+pub use update::{
+    check_ball_brick_collision, check_ball_deathzone_collision, check_ball_paddle_collision,
+    check_ball_wall_collision, check_game_clear, mark_broken_edges_on_brick_destroyed,
+    redraw_broken_bricks,
 };
+
+mod terminate;
+pub use terminate::{on_game_clear, on_game_over};
+
+use bevy::prelude::*;
 
 use crate::components::{
-    Ball, BallCollided, Brick, BrickCell, BrickDestroyed, BrickFill, BrokenEdges, Collider,
-    CollisionSound, DeathZone, GameAssets, GameState, Lives, LivesUi, Paddle, Score, ScoreboardUi,
-    Velocity,
+    Ball, BallCollided, Brick, CollisionSound, GameAssets, GameState, Lives, LivesUi, Paddle,
+    Score, ScoreboardUi, Velocity,
 };
-use crate::notify::{notify_game_clear, notify_game_over};
-use crate::rendering::{spawn_brick, BrickAssets};
+use crate::common::{spawn_brick, BrickAssets};
 use crate::config::{
-    BALL_DIAMETER, BALL_SPEED, BALL_STARTING_POSITION, INITIAL_BALL_DIRECTION, INITIAL_LIVES,
+    BALL_SPEED, BALL_STARTING_POSITION, INITIAL_BALL_DIRECTION, INITIAL_LIVES,
     LEFT_WALL, PADDLE_PADDING, PADDLE_SIZE, PADDLE_SPEED, RIGHT_WALL, WALL_THICKNESS,
-    BOTTOM_WALL, GAP_BETWEEN_PADDLE_AND_FLOOR
 };
 
 pub fn move_paddle(
@@ -46,7 +58,7 @@ pub fn move_paddle(
     paddle_transform.translation.x = new_paddle_position.clamp(left_bound, right_bound);
 }
 
-pub fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>, time: Res<Time>) {
+pub fn apply_velocity_to_transform_object(mut query: Query<(&mut Transform, &Velocity)>, time: Res<Time>) {
     for (mut transform, velocity) in &mut query {
         transform.translation.x += velocity.x * time.delta_secs();
         transform.translation.y += velocity.y * time.delta_secs();
@@ -131,274 +143,10 @@ pub fn launch_ball_on_click(
     }
 }
 
-// `collider_query` はタプルの要素数・`Option` の入れ子がそれなりに増えており
-// `clippy::type_complexity` が出るが、型自体は「1エンティティぶんの当たり判定情報」という
-// 単一の意味のまとまりで、`type` 別名を切っても本質的な複雑さは変わらないため警告は抑制する。
-#[allow(clippy::type_complexity)]
-pub fn check_for_collisions(
-    mut commands: Commands,
-    mut score: ResMut<Score>,
-    mut lives: ResMut<Lives>,
-    mut next_state: ResMut<NextState<GameState>>,
-    // ballとpaddleをクエリで取得しておく
-    ball_query: Single<(&mut Velocity, &mut Transform), (With<Ball>, Without<Paddle>)>,
-    paddle_entity: Single<Entity, With<Paddle>>,
-    collider_query: Query<
-        (Entity, &Transform, Option<&Brick>, Option<&DeathZone>),
-        (With<Collider>, Without<Ball>),
-    >,
-
-) {
-    let (mut ball_velocity, mut ball_transform) = ball_query.into_inner();
-
-    let paddle_entity = paddle_entity.into_inner();
-
-    // collider_query は「1エンティティぶんの情報セット」を1周ごとに返す。
-    // タプルの各要素はどれも、その周で扱っている 1 個のエンティティに紐づく情報。
-    //   1周目: ブロックAの (id, ブロックAのTransform, Some(Brick), None)
-    //   2周目: ブロックBの (id, ブロックBのTransform, Some(Brick), None)
-    //   …
-    //   n周目: バーの     (id, バーのTransform,       None,        None)
-    //   …     壁の       (id, 壁のTransform,         None,        None)
-    //   …     DeathZone  (id, 下端のTransform,       None,        Some(DeathZone))
-    // ブロックの格子座標は Brick.cell として持つので、別途 Option<&BrickCell> は要らない。
-    for (collider_entity, collider_transform, maybe_brick, maybe_death) in &collider_query {
-        // ブロックは Transform.scale を使わず Brick.size をメッシュ寸法として直接持つので、
-        // 当たり判定の半径もそこから取る（壁/パドル/DeathZone は従来通り scale 基準）。
-        let half_extents = match maybe_brick {
-            Some(brick) => brick.size / 2.0,
-            None => collider_transform.scale.truncate() / 2.0,
-        };
-        let collision = ball_collision(
-            BoundingCircle::new(ball_transform.translation.truncate(), BALL_DIAMETER / 2.),
-            Aabb2d::new(collider_transform.translation.truncate(), half_extents),
-        );
-
-        if let Some(collision) = collision {
-            // Trigger observers of the "BallCollided" event
-            commands.trigger(BallCollided);
-
-            // 下端（DeathZone）に触れたらライフを 1 減らす。反射はさせない。
-            // - 残りライフがあればボールを初期位置・初速に戻して続行する。
-            // - 0 になったら GameOver へ遷移する（ボールはそのフレーム以降、
-            //   `run_if(in_state(Playing))` により停止する）。
-            if maybe_death.is_some() {
-                lives.0 = lives.0.saturating_sub(1);
-                if lives.0 == 0 {
-                    next_state.set(GameState::GameOver);
-                } else {
-                    ball_transform.translation = BALL_STARTING_POSITION;
-                    ball_velocity.0 = INITIAL_BALL_DIRECTION.normalize() * BALL_SPEED;
-                    commands.entity(paddle_entity).insert(Transform {
-                        translation: Vec3::new(0.0, BOTTOM_WALL + GAP_BETWEEN_PADDLE_AND_FLOOR, 0.0),
-                        scale: PADDLE_SIZE.extend(1.0),
-                        ..default()
-                    });
-                }
-                // ボールをリセットしたので、このフレームの残りの衝突判定は打ち切る。
-                break;
-            }
-
-            // Bricks should be despawned and increment the scoreboard on collision
-            if let Some(brick) = maybe_brick {
-                commands.entity(collider_entity).despawn();
-                score.0 += 1;
-                commands.trigger(BrickDestroyed { cell: brick.cell });
-            }
-
-            // Reflect the ball's velocity when it collides
-            let mut reflect_x = false;
-            let mut reflect_y = false;
-
-            // Reflect only if the velocity is in the opposite direction of the collision
-            // This prevents the ball from getting stuck inside the bar
-            match collision {
-                Collision::Left => reflect_x = ball_velocity.x > 0.0,
-                Collision::Right => reflect_x = ball_velocity.x < 0.0,
-                Collision::Top => reflect_y = ball_velocity.y < 0.0,
-                Collision::Bottom => reflect_y = ball_velocity.y > 0.0,
-            }
-
-            // Reflect velocity on the x-axis if we hit something on the x-axis
-            if reflect_x {
-                ball_velocity.x = -ball_velocity.x;
-            }
-
-            // Reflect velocity on the y-axis if we hit something on the y-axis
-            if reflect_y {
-                ball_velocity.y = -ball_velocity.y;
-            }
-        }
-    }
-}
-
-/// 全ブロックが無くなったらクリア状態へ遷移する。`Playing` 中のみ動作させる想定
-/// （ブロックは `Startup` で spawn 済みなので、最初の `Update` フレームには存在する）。
-/// 実際の JS 通知は状態遷移側（`OnEnter(GameState::Cleared)` → `on_game_clear`）で行う。
-pub fn check_game_clear(
-    bricks: Query<(), With<Brick>>,
-    mut next_state: ResMut<NextState<GameState>>,
-) {
-    if bricks.is_empty() {
-        next_state.set(GameState::Cleared);
-    }
-}
-
-/// クリア状態に入った瞬間に一度だけ、フロント(JS)へゲームクリアを通知する。
-/// `OnEnter(GameState::Cleared)` に登録するので、状態遷移につき 1 回だけ走る。
-pub fn on_game_clear(score: Res<Score>) {
-    notify_game_clear(score.0);
-}
-
-/// ゲームオーバー状態に入った瞬間に一度だけ実行する。`OnEnter(GameState::GameOver)` に登録。
-/// - WASM: `breakout:gameover` を通知し、遷移は React に委ねる（クリアと同じ思想）。
-/// - ネイティブ: JS 通知は no-op なのでそのままだと画面が固まる。代わりに `GameRestart` へ遷移し、
-///   `reset_game` で盤面を作り直して再プレイできるようにする。
-/// `next_state` はネイティブでのみ使うため、WASM では引数ごと省く（未使用警告の回避）。
-pub fn on_game_over(
-    score: Res<Score>,
-    #[cfg(not(target_arch = "wasm32"))] mut next_state: ResMut<NextState<GameState>>,
-) {
-    notify_game_over(score.0);
-
-    #[cfg(not(target_arch = "wasm32"))]
-    next_state.set(GameState::GameRestart);
-}
-
 pub fn play_collision_sound(
     _collided: On<BallCollided>,
     mut commands: Commands,
     sound: Res<CollisionSound>,
 ) {
     commands.spawn((AudioPlayer(sound.clone()), PlaybackSettings::DESPAWN));
-}
-
-/// ブロックが破壊された時、隣接する4方向(上下左右)のブロックのうち、破壊されたブロックと
-/// 接していた辺だけを「破れた境界」にする。かつて隣接ブロックが存在しなかった辺(壁際・隙間)は
-/// この経路を一切通らないので、破れた見た目にならない。
-pub fn mark_broken_edges_on_brick_destroyed(
-    trigger: On<BrickDestroyed>,
-    mut bricks: Query<(&Brick, &mut BrokenEdges)>,
-) {
-    let destroyed = trigger.cell;
-    for (brick, mut broken) in &mut bricks {
-        let cell = brick.cell;
-        if cell.row == destroyed.row + 1 && cell.col == destroyed.col {
-            broken.bottom = true; // 自分は破壊されたセルの真上 → 自分の下辺が破れる
-        } else if cell.row == destroyed.row - 1 && cell.col == destroyed.col {
-            broken.top = true; // 真下 → 上辺が破れる
-        } else if cell.col == destroyed.col + 1 && cell.row == destroyed.row {
-            broken.left = true; // 右隣 → 左辺が破れる
-        } else if cell.col == destroyed.col - 1 && cell.row == destroyed.row {
-            broken.right = true; // 左隣 → 右辺が破れる
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-enum Collision {
-    Left,
-    Right,
-    Top,
-    Bottom,
-}
-
-// Returns `Some` if `ball` collides with `bounding_box`.
-// The returned `Collision` is the side of `bounding_box` that `ball` hit.
-fn ball_collision(ball: BoundingCircle, bounding_box: Aabb2d) -> Option<Collision> {
-    if !ball.intersects(&bounding_box) {
-        return None;
-    }
-
-    let closest = bounding_box.closest_point(ball.center());
-    let offset = ball.center() - closest;
-    let side = if offset.x.abs() > offset.y.abs() {
-        if offset.x < 0. {
-            Collision::Left
-        } else {
-            Collision::Right
-        }
-    } else if offset.y > 0. {
-        Collision::Top
-    } else {
-        Collision::Bottom
-    };
-
-    Some(side)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn cell(row: i32, col: i32) -> BrickCell {
-        BrickCell { row, col }
-    }
-
-    fn spawn_cell(world: &mut World, row: i32, col: i32) -> Entity {
-        world
-            .spawn((
-                Brick {
-                    size: Vec2::ONE,
-                    cell: cell(row, col),
-                    fill: BrickFill::Color(Color::WHITE),
-                },
-                BrokenEdges::default(),
-            ))
-            .id()
-    }
-
-    fn broken(world: &World, entity: Entity) -> BrokenEdges {
-        *world.get::<BrokenEdges>(entity).unwrap()
-    }
-
-    /// `mark_broken_edges_on_brick_destroyed` が row/col の各方向を正しい辺に対応させることを
-    /// 固定化する回帰テスト。CLAUDE.md の規約(row 増加=上, col 増加=右)を前提に、
-    /// 「真上のブロックの下辺」「真下の上辺」「右隣の左辺」「左隣の右辺」が破れ、
-    /// それ以外(隣接しないセル)は変化しないことを確認する。
-    #[test]
-    fn marks_only_the_edge_facing_the_destroyed_neighbor() {
-        let mut world = World::new();
-        world.add_observer(mark_broken_edges_on_brick_destroyed);
-
-        let above = spawn_cell(&mut world, 1, 0);
-        let below = spawn_cell(&mut world, -1, 0);
-        let right = spawn_cell(&mut world, 0, 1);
-        let left = spawn_cell(&mut world, 0, -1);
-        let unrelated = spawn_cell(&mut world, 5, 5);
-        let diagonal = spawn_cell(&mut world, 1, 1);
-
-        world.trigger(BrickDestroyed { cell: cell(0, 0) });
-
-        assert_eq!(
-            broken(&world, above),
-            BrokenEdges { bottom: true, ..Default::default() },
-            "真上のブロックは下辺が破れるはず"
-        );
-        assert_eq!(
-            broken(&world, below),
-            BrokenEdges { top: true, ..Default::default() },
-            "真下のブロックは上辺が破れるはず"
-        );
-        assert_eq!(
-            broken(&world, right),
-            BrokenEdges { left: true, ..Default::default() },
-            "右隣のブロックは左辺が破れるはず"
-        );
-        assert_eq!(
-            broken(&world, left),
-            BrokenEdges { right: true, ..Default::default() },
-            "左隣のブロックは右辺が破れるはず"
-        );
-        assert_eq!(
-            broken(&world, unrelated),
-            BrokenEdges::default(),
-            "隣接しないブロックは変化しないはず"
-        );
-        assert_eq!(
-            broken(&world, diagonal),
-            BrokenEdges::default(),
-            "斜めに隣接するだけのブロックは辺を共有しないので変化しないはず"
-        );
-    }
 }

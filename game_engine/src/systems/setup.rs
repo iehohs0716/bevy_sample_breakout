@@ -15,7 +15,8 @@ use crate::config::{
 use crate::injection::{
     default_brick_layout, BackgroundOverride, BrickImageOverride, BrickLayoutOverride,
 };
-use crate::rendering::{contain_fit, spawn_brick, BrickAssets};
+use crate::common::{spawn_brick, BrickAssets};
+use crate::util::contain_fit;
 
 // Add the game's entities to our world
 pub fn setup(

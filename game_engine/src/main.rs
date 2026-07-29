@@ -3,23 +3,23 @@
 //! Demonstrates Bevy's stepping capabilities if compiled with the `bevy_debug_stepping` feature.
 //!
 //! モジュール構成:
+//! - `util`: アスペクト比を保ったまま内接させる `contain_fit`（ドメイン型に非依存）
+//! - `common`: ブロックの spawn ヘルパー。`Query` を取らない、手動で呼び出す処理だけを持つ
+//!   （`systems::setup` と `systems::reset_game` の両方から使われるが、中身は全てブロックという
+//!   単一ドメインの処理）。`Query` を取る実際の Bevy system は `systems::update::brick` に置く
 //! - `config`: ゲーム全体の定数
 //! - `components`: Component / Resource / Event の定義
 //! - `injection`: React(JS) から渡される初期化パラメータの読み取り
-//! - `notify`: ゲームイベント（クリア等）をフロント(JS)へ通知
-//! - `rendering`: 画像フィット計算とブロック描画ヘルパー
-//! - `tear`: 破れた辺のギザギザ輪郭を中点変位法で生成する
-//! - `setup`: 起動時セットアップ system
-//! - `systems`: 毎フレームのゲームプレイ system
+//! - `systems`: Bevy system への入り口。起動時に一度だけ走る `Startup` system は
+//!   `systems::setup`、毎フレーム／衝突イベントへの反応は `systems::update`、
+//!   終端状態（クリア／ゲームオーバー）突入時の JS 通知は `systems::terminate` に分離している
 
+mod util;
+mod common;
 mod components;
 mod config;
 mod injection;
-mod notify;
-mod rendering;
-mod setup;
 mod systems;
-mod tear;
 
 use bevy::prelude::*;
 
@@ -29,12 +29,12 @@ use injection::{
     injected_background_image, injected_brick_image, injected_brick_layout, BackgroundOverride,
     BrickImageOverride, BrickLayoutOverride,
 };
-use rendering::redraw_broken_bricks;
-use setup::setup;
 use systems::{
-    apply_velocity, check_for_collisions, check_game_clear, launch_ball_on_click,
-    mark_broken_edges_on_brick_destroyed, move_paddle, on_game_clear, on_game_over,
-    play_collision_sound, reset_game, update_lives, update_scoreboard,
+    apply_velocity_to_transform_object, check_ball_brick_collision, check_ball_deathzone_collision,
+    check_ball_paddle_collision, check_ball_wall_collision, check_game_clear,
+    launch_ball_on_click, mark_broken_edges_on_brick_destroyed, move_paddle, on_game_clear,
+    on_game_over, play_collision_sound, redraw_broken_bricks, reset_game, setup, update_lives,
+    update_scoreboard,
 };
 
 fn main() {
@@ -66,7 +66,15 @@ fn main() {
         // ゲームプレイ system はプレイ中（Playing）のみ動かす。クリア後はボールを止める。
         .add_systems(
             Update,
-            (apply_velocity, move_paddle, check_for_collisions)
+            (
+                apply_velocity_to_transform_object,
+                move_paddle,
+                // ボールとの当たり判定は「相手が何か」で4つのsystemに分けている
+                check_ball_brick_collision,
+                check_ball_wall_collision,
+                check_ball_paddle_collision,
+                check_ball_deathzone_collision,
+            )
                 // `chain`ing systems together runs them in order
                 .chain()
                 .run_if(in_state(GameState::Playing)),
@@ -74,11 +82,8 @@ fn main() {
         // 全ブロック破壊の判定もプレイ中のみ。0 になったら Cleared へ遷移する。
         .add_systems(Update, check_game_clear.run_if(in_state(GameState::Playing)))
         .add_systems(Update, (update_scoreboard, update_lives))
-        // `check_for_collisions` の Commands（ブロック despawn / `BrickDestroyed` トリガー）→
-        // `mark_broken_edges_on_brick_destroyed`(observer) → `BrokenEdges` 変更 という一連の後に
-        // 読む必要があるため、`.after` で明示する。Bevy は順序制約のある両者の間に自動で
-        // 同期点（コマンド適用）を挿入するので、これで同一フレーム内の反映が保証される。
-        .add_systems(Update, redraw_broken_bricks.after(check_for_collisions))
+        // ブロック破壊で更新された `BrokenEdges` を同フレームで反映するため衝突判定の後に走らせる。
+        .add_systems(Update, redraw_broken_bricks.after(check_ball_brick_collision))
         // クリック待ち（GameStart=初回 / GameRestart=敗北後）中の左クリックでボール発射 → Playing へ。
         .add_systems(
             Update,

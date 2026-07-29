@@ -1,134 +1,14 @@
-//! 画像のフィット計算とブロックの描画（spawn / メッシュ構築）ヘルパー。
-//!
-//! 画像は「引き伸ばし（テクスチャ漬け）」ではなく、盤面に比率維持で貼った 1 枚の絵として扱い、
-//! 各ブロックはその絵のうち自分が覆う領域だけを切り出して表示する。全ブロックが揃うと 1 枚の
-//! 絵になり、ブロックを壊すとその穴から背後の背景画像が見える。
-//!
-//! ブロックは Sprite ではなく Mesh2d(動的メッシュ) + ColorMaterial で描画する。壁・パドルと違い
-//! ブロックは破壊された隣との接触面だけを中点変位法のギザギザ輪郭に再構築する必要があり、
-//! それには頂点を自前で持てるメッシュが要る。
+//! ブロックのメッシュ・マテリアル構築。破壊された辺だけを中点変位法のギザギザ輪郭に
+//! 再構築する処理（兄弟モジュール `torn_edge` を使う）を含む、ブロック描画のうち幾何処理だけを持つ。
+//! `spawn_brick` / `redraw_broken_bricks`（親モジュール）からのみ使うため非公開のまま。
 
 use bevy::asset::RenderAssetUsages;
-use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 
-use crate::components::{Brick, BrickCell, BrickFill, BrokenEdges, Collider};
-use crate::config::{BOTTOM_WALL, BRICK_COLOR, LEFT_WALL, RIGHT_WALL, TOP_WALL};
+use crate::components::{BrickCell, BrickFill, BrokenEdges};
 
-/// ブロックの spawn / 再構築に要る 2 つの `Assets` をまとめた `SystemParam`。
-/// `spawn_brick` を呼ぶ `setup`・`reset_game` の両方でこの 2 つは常にセットで必要になるため、
-/// バラのまま渡すと（他の必須パラメータと合わせて）`clippy::too_many_arguments` を誘発する。
-/// 意味的にも「ブロック描画に使うアセット」という 1 つのまとまりなので、
-/// 型として束ねてしまう方が呼び出し側の引数リストも意図も単純になる。
-#[derive(SystemParam)]
-pub struct BrickAssets<'w> {
-    pub meshes: ResMut<'w, Assets<Mesh>>,
-    pub materials: ResMut<'w, Assets<ColorMaterial>>,
-}
-
-/// `content`（例: 画像のピクセル寸法）を `container`（例: アリーナ）に、アスペクト比を
-/// 保ったまま内接させたときの表示寸法を返す（いわゆる "contain" フィット）。
-/// 比率が合わない分は余白になる（呼び出し側で黒く塗る前提）。
-pub fn contain_fit(content: Vec2, container: Vec2) -> Vec2 {
-    let scale = (container.x / content.x).min(container.y / content.y);
-    content * scale
-}
-
-/// 画像をアリーナに contain フィット（比率維持で内接・中央寄せ）で「そのまま」貼ったと仮定し、
-/// `position` を中心・`size` を大きさとするブロックが覆う領域に対応する画像内の切り出し矩形
-/// （ピクセル）を返す。ブロックが表示領域（内接矩形）からはみ出す場合は `None`（＝黒くする）。
-/// 全ブロックが揃うと 1 枚の絵になり、ブロックを壊すとその穴から背後の背景画像が見える。
-/// ワールド座標は y 上向き、画像座標は y 下向きなので v は上下反転して対応させる。
-fn brick_image_rect(position: Vec2, size: Vec2, image_size: Vec2) -> Option<Rect> {
-    let field = Vec2::new(RIGHT_WALL - LEFT_WALL, TOP_WALL - BOTTOM_WALL);
-    // アリーナ中央に内接させた画像の表示寸法。中心原点なので範囲は [-half, half]。
-    let display = contain_fit(image_size, field);
-    let half = display / 2.0;
-
-    let left = position.x - size.x / 2.0;
-    let right = position.x + size.x / 2.0;
-    let top = position.y + size.y / 2.0;
-    let bottom = position.y - size.y / 2.0;
-
-    // 内接矩形からはみ出すブロックには画像を貼らず、黒くする（余白＝黒）。
-    if left < -half.x || right > half.x || bottom < -half.y || top > half.y {
-        return None;
-    }
-
-    let u_min = (left + half.x) / display.x * image_size.x;
-    let u_max = (right + half.x) / display.x * image_size.x;
-    // 内接矩形の上端 (y=+half.y) を画像の上端 (v=0) に対応させる。
-    let v_min = (half.y - top) / display.y * image_size.y;
-    let v_max = (half.y - bottom) / display.y * image_size.y;
-
-    Some(Rect::new(u_min, v_min, u_max, v_max))
-}
-
-/// ピクセル矩形を `image_size` で割り、0..1 の UV 矩形に正規化する。
-fn normalize_rect(rect: Rect, image_size: Vec2) -> Rect {
-    Rect::new(
-        rect.min.x / image_size.x,
-        rect.min.y / image_size.y,
-        rect.max.x / image_size.x,
-        rect.max.y / image_size.y,
-    )
-}
-
-/// 1 つのブロックを spawn する。`position` はワールド座標での中心、`size` はセルの大きさ、
-/// `cell` は盤面上の行・列（隣接判定・ギザギザの種の両方に使う）。
-/// `image` が `Some` なら、比率維持で貼った画像のうちこのブロックが覆う領域だけを切り出して
-/// 表示する（引き伸ばしではなく「そのまま貼った絵の一部分」）。内接矩形の外や画像未指定なら
-/// それぞれ黒・単色で描く。デフォルト配置と JS 注入配置の双方から使い、spawn ロジックを一本化する。
-pub fn spawn_brick(
-    commands: &mut Commands,
-    brick_assets: &mut BrickAssets,
-    position: Vec2,
-    size: Vec2,
-    cell: BrickCell,
-    image: Option<(Handle<Image>, Vec2)>,
-) {
-    let fill = match image {
-        Some((handle, image_size)) => match brick_image_rect(position, size, image_size) {
-            Some(rect) => BrickFill::Textured {
-                image: handle,
-                uv_rect: normalize_rect(rect, image_size),
-            },
-            // 内接矩形の外にあるブロックは黒（＝画像の余白と同じ扱い）。
-            None => BrickFill::Color(Color::BLACK),
-        },
-        None => BrickFill::Color(BRICK_COLOR),
-    };
-
-    let broken = BrokenEdges::default();
-    let mesh = build_brick_mesh(size, cell, &broken, &fill);
-    let material = build_brick_material(&fill);
-
-    commands.spawn((
-        Mesh2d(brick_assets.meshes.add(mesh)),
-        MeshMaterial2d(brick_assets.materials.add(material)),
-        Transform::from_translation(position.extend(0.0)),
-        // 不変データ(大きさ・格子座標・塗り方)は Brick にまとめて持たせる。
-        Brick { size, cell, fill },
-        Collider,
-        // 実行中に変化する破れ状態だけ独立コンポーネント。
-        broken,
-    ));
-}
-
-/// `BrokenEdges` が変化したブロックだけ、メッシュを壊れた輪郭で再構築する。
-pub fn redraw_broken_bricks(
-    mut meshes: ResMut<Assets<Mesh>>,
-    bricks: Query<(&Brick, &BrokenEdges, &Mesh2d), Changed<BrokenEdges>>,
-) {
-    for (brick, broken_edge, mesh2d) in &bricks {
-        if let Some(mut mesh) = meshes.get_mut(&mesh2d.0) {
-            *mesh = build_brick_mesh(brick.size, brick.cell, broken_edge, &brick.fill);
-        }
-    }
-}
-
-fn build_brick_material(fill: &BrickFill) -> ColorMaterial {
+pub(super) fn build_brick_material(fill: &BrickFill) -> ColorMaterial {
     match fill {
         BrickFill::Color(color) => ColorMaterial::from(*color),
         // `image` は `&Handle<Image>`。`image.clone()` は `&T` に常に生える `Clone`（参照自体の
@@ -160,7 +40,12 @@ fn vertex_uv(p: Vec2, size: Vec2, fill: &BrickFill) -> [f32; 2] {
 /// true になっている辺だけ中点変位法のギザギザに置き換えたメッシュを構築する。中心
 /// (`Vec2::ZERO`)を追加した扇形三角形分割（fan triangulation）を使うため、輪郭は常に
 /// 中心から見える(star-shaped)範囲に収める必要がある（`TEAR_ROUGHNESS` 参照）。
-fn build_brick_mesh(size: Vec2, cell: BrickCell, broken: &BrokenEdges, fill: &BrickFill) -> Mesh {
+pub(crate) fn build_brick_mesh(
+    size: Vec2,
+    cell: BrickCell,
+    broken: &BrokenEdges,
+    fill: &BrickFill,
+) -> Mesh {
     let half = size / 2.0;
     let corners = [
         Vec2::new(-half.x, -half.y), // bottom-left
@@ -177,9 +62,9 @@ fn build_brick_mesh(size: Vec2, cell: BrickCell, broken: &BrokenEdges, fill: &Br
         let end = corners[(i + 1) % 4];
         boundary.push(start);
         if edge_broken[i] {
-            // 破れた辺だけ、中点変位法のギザギザ輪郭に置き換える（実装は `tear` モジュール）。
+            // 破れた辺だけ、中点変位法のギザギザ輪郭に置き換える（実装は `torn_edge` モジュール）。
             // この中で、boundaryに追加の頂点が追加されていく
-            crate::tear::push_torn_edge(cell, i as u32, start, end, &mut boundary);
+            super::torn_edge::push_torn_edge(cell, i as u32, start, end, &mut boundary);
         }
     }
 
@@ -217,7 +102,7 @@ fn build_brick_mesh(size: Vec2, cell: BrickCell, broken: &BrokenEdges, fill: &Br
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::BRICK_SIZE;
+    use crate::config::{BRICK_COLOR, BRICK_SIZE};
 
     fn all_broken() -> BrokenEdges {
         BrokenEdges { top: true, bottom: true, left: true, right: true }

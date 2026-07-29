@@ -6,13 +6,32 @@ Bevy 製ブロック崩し（`game_engine`）を WASM ビルドし、React フ�
 ## プロジェクト構成
 
 - `game_engine/` — Bevy ゲーム本体（Rust）。`src/` は次のモジュールに分割。
+  - `util`: どのドメイン型にも一切依存しない、純粋に汎用な計算だけを置く（例: アスペクト比を
+    保ったまま内接させる `contain_fit`）。ここに置くかどうかは**呼び出し元の数では判断しない**。
+    単一ドメインの処理を、呼び出し元が複数あるからという理由だけでここに逃がさないこと
+    （呼び出し元が何箇所あっても、中身が単一ドメインの処理なら、そのドメイン名のモジュールに置く）
+  - `common`: ドメイン型（`Brick`等）には依存するが、単一の`systems`サブモジュールの中に
+    閉じずに複数箇所（`systems::setup`と`systems::update::brick`の両方）から手動で呼び出される
+    処理を置く（例: `spawn_brick` / `BrickAssets`）。**`Query`を引数に取る関数（＝実際に
+    Bevyのスケジューラが呼ぶsystem）を`common`配下に置くことは禁止する。** `common`はあくまで
+    「他のsystemやsetupから普通の関数として手動で呼ばれるヘルパー」の置き場であり、
+    Bevyが自動実行するsystem・observerは呼び出し方が全く違う別の役割なので、必ず`systems`側
+    （`systems::update`等）に置く。判断基準は「そのドメインの処理を`Query`のような特別な
+    system引数を伴わずに関数として直接呼び出せるか」であって、ドメイン型に依存するかどうかは
+    `util`と`common`を分けるときの基準（前述）と別軸。
   - `config`: ゲーム全体の定数
   - `components`: Component / Resource / Event の定義
   - `injection`: React(JS) から渡される初期化パラメータの読み取り
-  - `notify`: ゲームイベント（クリア等）をフロント(JS)へ通知
-  - `rendering`: 画像フィット計算とブロック描画ヘルパー
-  - `setup`: 起動時セットアップ system（`Startup` に登録）
-  - `systems`: 毎フレームのゲームプレイ system
+  - `systems`: Bevyのスケジューラが実行する全てのsystem・observerへの入り口。実行タイミングで
+    3つに分割している。
+    - `systems::setup`: `Startup`に一度だけ登録される起動時セットアップsystem
+    - `systems::update`: `Update`スケジュールで毎フレーム走るsystemと、`Commands::trigger`で
+      発火するobserver（当たり判定は`systems::update::collision`、ブロック単一ドメインの
+      system・observerは`systems::update::brick`にさらに分離）
+    - `systems::terminate`: 終端状態（`Cleared`/`GameOver`）の`OnEnter`で一度だけ走る、
+      フロント(JS)への通知system（通知の実装＝`window.dispatchEvent`等も含む。`main`から
+      直接呼ばれるのは`injection`側だけで、通知の実装は`systems`経由でしか使われないため、
+      独立トップレベルモジュールにはしない）
 - `frontend/` — Vite + React。WASM グルーの読み込みと初期化パラメータ受け渡しを担う。
 
 ## ビルド規約（必ずこの流れを踏む）
@@ -64,6 +83,23 @@ cd frontend && pnpm build:wasm
   `window.__BREAKOUT_CONFIG__`）の三点で確証を取る。
 - 無視してよいノイズ: `favicon.ico` の 404 / AudioContext autoplay 警告 /
   SwiftShader 由来の software rendering WARN / winit の "Using exceptions for control flow"。
+
+## 命名規約（ファイル・関数）
+
+**ファイル名・関数名だけを見て中身が推測できない名前を禁止する。** `common` / `utils` /
+`helper` / `misc` のような「何でも置き場」を示唆する名前や、対象・処理内容が省略された曖昧な
+名前は、何のための処理かが名前から分からず、後から見た人がファイルを開くまで置き場所の妥当性
+すら判断できない。ファイル名・関数名は、それが扱うドメインや処理内容を具体的に表す語にすること。
+
+- どのドメイン型にも依存しない純粋な汎用処理は `util` に置き、関数名自体で処理内容を表す
+  （例: `contain_fit`）。
+- 呼び出し元が複数あっても、中身が単一ドメインの処理ならそのドメイン名のモジュールに置く。
+  置き場所を呼び出し元の数だけで判断しないこと（詳細は「プロジェクト構成」の `util` /
+  `common` の説明を参照）。
+- 上記の「`common` / `utils` のような曖昧な名前を禁止する」という原則より、本プロジェクトでは
+  `util` / `common` という名前自体をユーザーが明示的に選択している（詳細な使い分けは
+  「プロジェクト構成」参照）。この 2 モジュール名についてはこの禁止原則の例外として扱い、
+  改めて「曖昧だから」という理由だけで改名を提案しないこと。
 
 ## エンティティ・コンポーネント設計方針
 

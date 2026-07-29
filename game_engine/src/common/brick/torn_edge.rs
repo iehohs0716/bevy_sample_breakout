@@ -1,6 +1,6 @@
-//! 破れた辺（tear）のギザギザ輪郭を、中点変位法で決定的に生成するモジュール。
+//! 破れた辺（torn edge）のギザギザ輪郭を、中点変位法で決定的に生成する。
+//! `common::mesh::build_brick_mesh` からのみ使うため、`common` の外へは公開しない。
 //!
-//! ブロックの破壊面だけをギザギザに再構築する `rendering::build_brick_mesh` から使う。
 //! 「同じブロック（`BrickCell`）・同じ辺なら常に同じ形」になるよう、盤面座標と辺番号から
 //! 決定的な種を作り、その種で駆動する疑似乱数を中点変位法に食わせる。
 
@@ -32,7 +32,7 @@ impl TearRng {
 }
 
 /// ブロックの盤面座標と辺番号から決定的な種を作る。同じセル・同じ辺なら常に同じギザギザになる。
-pub fn seed_for(cell: BrickCell, edge_index: u32) -> u32 {
+fn seed_for(cell: BrickCell, edge_index: u32) -> u32 {
     let r = cell.row as u32;
     let c = cell.col as u32;
     r.wrapping_mul(73856093)
@@ -64,7 +64,7 @@ fn midpoint_displace(a: Vec2, b: Vec2, depth: u32, roughness: f32, rng: &mut Tea
 /// （両端 `start`/`end` は呼び出し側が管理する前提）。`cell`・`edge_index` から決定的な種を
 /// 作るので、同じセル・同じ辺なら常に同じ形になる。振れ幅・分割段数は `config` の
 /// `TEAR_ROUGHNESS` / `TEAR_DEPTH` に従う。
-pub fn push_torn_edge(cell: BrickCell, edge_index: u32, start: Vec2, end: Vec2, out: &mut Vec<Vec2>) {
+pub(super) fn push_torn_edge(cell: BrickCell, edge_index: u32, start: Vec2, end: Vec2, out: &mut Vec<Vec2>) {
     let mut rng = TearRng::new(seed_for(cell, edge_index));
     midpoint_displace(start, end, TEAR_DEPTH, TEAR_ROUGHNESS, &mut rng, out);
 }
