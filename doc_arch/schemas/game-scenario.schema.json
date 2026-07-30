@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bevy-sample.example/schemas/game-scenario.schema.json",
+  "title": "GameScenario",
+  "description": "DynamoDB item schema for a game scenario. Partition key: scenarioId. See doc_arch/backend.md §5.1 and doc_arch/diagrams/game-scenario-class-diagram.drawio for the source class diagram.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scenarioId", "title", "description", "authorId", "visibility", "createdAt", "scenarioParameters", "stats"],
+  "properties": {
+    "scenarioId": {
+      "type": "string",
+      "description": "Partition key. Also used as the URL access key for the scenario.",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "authorId": {
+      "type": ["string", "null"],
+      "description": "Supabase-issued user id. Null when anonymous posting is allowed (open item, see doc_arch/requirements.md §3)."
+    },
+    "visibility": {
+      "type": "string",
+      "enum": ["public", "unlisted"]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scenarioParameters": {
+      "$ref": "#/$defs/scenarioParameters"
+    },
+    "stats": {
+      "$ref": "#/$defs/stats"
+    }
+  },
+  "$defs": {
+    "scenarioParameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["games"],
+      "properties": {
+        "games": {
+          "type": "array",
+          "description": "Ordered list of games belonging to this scenario. Array order defines play order.",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/game" }
+        }
+      }
+    },
+    "game": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gameId", "description", "background", "brickImage", "cellSize", "brickPlacement"],
+      "properties": {
+        "gameId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "background": {
+          "$ref": "#/$defs/imageRef"
+        },
+        "brickImage": {
+          "$ref": "#/$defs/imageRef"
+        },
+        "cellSize": {
+          "$ref": "#/$defs/cellSize"
+        },
+        "brickPlacement": {
+          "$ref": "#/$defs/brickPlacement"
+        }
+      }
+    },
+    "imageRef": {
+      "type": "object",
+      "description": "Reference to an image stored in Supabase Storage. Byte content is not embedded here; the frontend fetches imageUrl and converts it to bytes (see doc_arch/frontend.md).",
+      "additionalProperties": false,
+      "required": ["imageUrl", "mime"],
+      "properties": {
+        "imageUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "mime": {
+          "type": "string",
+          "enum": ["image/png", "image/jpeg", "image/webp"],
+          "description": "Whitelist matches doc_arch/backend.md §7 upload validation policy."
+        }
+      }
+    },
+    "cellSize": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "exclusiveMinimum": 0 },
+        "height": { "type": "integer", "exclusiveMinimum": 0 }
+      }
+    },
+    "brickPlacement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bricks"],
+      "properties": {
+        "bricks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/point" }
+        }
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["playCount", "likeCount"],
+      "properties": {
+        "playCount": { "type": "integer", "minimum": 0 },
+        "likeCount": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
