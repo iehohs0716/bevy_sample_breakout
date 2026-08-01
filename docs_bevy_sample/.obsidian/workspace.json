@@ -185,6 +185,8 @@
   },
   "active": "52e1d04ce69ae92c",
   "lastOpenFiles": [
+    "20260801_cloudflare-pages-local-deploy-practice.md",
+    "20260801_cloudflare-pages-deploy-considerations.md",
     "20260801_fsd-vs-atomic-design.md",
     "20260801_fsd-dependency-rules.md",
     "20260801_fsd-overview.md",
@@ -208,8 +210,6 @@
     "20260728_collision-bounding-box-generics.md",
     "20260728_collision-generics-and-lifetimes.md",
     "20260725_rust-from-into-trait.md",
-    "20260725_bevy-handle-clone-pitfall.md",
-    "20260725_rust-match-and-pattern-binding.md",
-    "20260725_bevy-mesh-material-uv-basics.md"
+    "20260725_bevy-handle-clone-pitfall.md"
   ]
 }
