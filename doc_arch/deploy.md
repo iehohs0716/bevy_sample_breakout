@@ -13,7 +13,7 @@ Docker Compose ベースで再現するための構成を扱う。
 | Supabase（Auth/Postgres = ユーザー情報、Storage = 画像） | `supabase start`（Supabase CLI）を実行するだけで、本番相当のスタックが Docker 上に一括で立ち上がる。内部構成の詳細は CLI に任せ、意識しなくてよい |
 | DynamoDB（ゲームデータ。[backend.md](./backend.md) §2） | `amazon/dynamodb-local`（AWS 公式 Docker イメージ）をポート 8000 で起動 |
 | フロント（React/WASM） | `vite dev` |
-| 自前 API 層（Cloudflare Pages Functions） | `wrangler pages dev`（接続先はローカルの Supabase スタック・DynamoDB Local を向ける） |
+| 自前 API 層（Cloudflare Workers） | `wrangler dev`（接続先はローカルの Supabase スタック・DynamoDB Local を向ける） |
 
 4つとも Docker（または Docker 相当のローカルプロセス）で完結し、追加のクラウド契約は不要。
 Supabase CLI（Docker Compose ベース）と `amazon/dynamodb-local`（Docker）は、Supabase CLI が

@@ -9,7 +9,7 @@
 
 フロントエンド（`frontend/` React + WASM）が担う役割は以下の通り。
 
-- 静的サイトとして Cloudflare Pages から配信される（詳細は [hosting-and-cicd.md](./hosting-and-cicd.md)）。
+- 静的サイトとして Cloudflare Workers（Workers Static Assets）から配信される（詳細は [hosting-and-cicd.md](./hosting-and-cicd.md)）。
 - レベル一覧・レベル作成・プレイの 3 画面を提供する。
 - 自前 API 層（`/api/levels` 等、詳細は [backend.md](./backend.md)）とのみ通信し、
   `supabase-js` で PostgREST や Storage を直接叩くコードは書かない。例外は認証（§3）のみ。

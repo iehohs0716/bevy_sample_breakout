@@ -71,8 +71,8 @@ PostgREST を直接叩き、認可を RLS（Row Level Security）ポリシー内
 
 **方針**: フロントエンドは Supabase の SDK・PostgREST・Storage SDK を **直接叩かない**
 （[frontend.md](./frontend.md)）。代わりに、アプリ自身が所有する薄い API 層（Cloudflare
-Pages Functions を想定。フロントと同じ Cloudflare Pages 上にデプロイでき、追加インフラが
-増えない）を挟み、**フロントはこの自前 API 層としか通信しない**。Supabase 固有の呼び出し方は
+Workers を想定。フロントと同じ Cloudflare Workers 上にデプロイでき（Workers Static Assets で
+静的アセットも配信）、追加インフラが増えない）を挟み、**フロントはこの自前 API 層としか通信しない**。Supabase 固有の呼び出し方は
 すべてこの API 層の内部実装に閉じ込める。実装としては一般的な **Facade パターン**（＋ Storage
 部分は Adapter パターン）そのものであり、目新しい仕組みを導入するわけではない。
 
@@ -100,7 +100,7 @@ Pages Functions を想定。フロントと同じ Cloudflare Pages 上にデプ�
 §3 の表にある通り、認証は現状「JWT 発行元が Supabase 固有」という中程度のロックインが
 残っている（[frontend.md](./frontend.md) で述べる通り、フロントが例外的に Supabase Auth の
 JS SDK を直接使うことを許容しているのもこのため）。これをさらに解消する案として、**OAuth の
-やり取りそのものを Supabase Auth ではなく自前 API 層（Cloudflare Pages Functions）内で動かす
+やり取りそのものを Supabase Auth ではなく自前 API 層（Cloudflare Workers）内で動かす
 Auth.js に担当させ、Supabase は §2 と同じく素の Postgres（ロール管理テーブル含む）としてのみ
 使う**という構成を検討中。技術調査の詳細は
 `docs_bevy_sample/20260730_authjs-oauth-on-cloudflare-pages-functions.md`
@@ -117,7 +117,7 @@ Auth.js に担当させ、Supabase は §2 と同じく素の Postgres（ロー�
 - ただし「公式のワンストップ・テンプレート」は存在せず、Hyperdrive の設定（Supabase 側は
   Direct connection を使い Supavisor と二重に挟まない等）、`nodejs_compat` フラグ、
   `trustHost` の明示設定などを自前で配線する必要がある「上級者向け構成」であり、実装前に
-  Cloudflare Pages Functions 上での PoC（Google/GitHub ログイン→Postgres へのユーザー作成→
+  Cloudflare Workers 上での PoC（Google/GitHub ログイン→Postgres へのユーザー作成→
   ロール読み出し）が必須。
 
 **採用した場合に本書へ与える影響（採用を決めた時点で反映すること）**:
@@ -209,7 +209,7 @@ Storage 1 箇所に画像を集約してよい**が、以下は明示的に対�
 
 - レベル画像を置くバケットは **public** にする（読み取りは未認証で可）。public バケット自体は
   追加の CORS 設定なしでも GET 自体は通るが、ブラウザからの `fetch()` を確実に通すため
-  バケットの CORS 設定（`allowedOrigins`）に本番ドメイン（Cloudflare Pages の URL）と
+  バケットの CORS 設定（`allowedOrigins`）に本番ドメイン（Cloudflare Workers の URL）と
   ローカル開発オリジン（`http://localhost:5173` 等）を明示登録する。
 - アップロードは `supabase-js` の Storage SDK 経由に統一する（presigned URL を自前で組み立てる
   方式は CORS エラーの報告例が複数あり、避ける）。
@@ -221,8 +221,8 @@ Storage 1 箇所に画像を集約してよい**が、以下は明示的に対�
 
 ## 6. API設計（自前 API 層経由）
 
-§3 の方針に基づき、フロントは PostgREST や Storage SDK を直接叩かない。Cloudflare Pages
-Functions 上に置く自前 API 層が、フロントから見た唯一の窓口になる（[hosting-and-cicd.md](./hosting-and-cicd.md)）。
+§3 の方針に基づき、フロントは PostgREST や Storage SDK を直接叩かない。Cloudflare Workers
+上に置く自前 API 層が、フロントから見た唯一の窓口になる（[hosting-and-cicd.md](./hosting-and-cicd.md)）。
 
 | 操作 | フロントから見た契約（自前 API） |
 |---|---|
@@ -235,7 +235,7 @@ Functions 上に置く自前 API 層が、フロントから見た唯一の窓�
 画像をどこに保存しているかは API 層の実装詳細として隠蔽される（§3）。これにより、
 ゲームデータの保存先や画像ストレージの実体を差し替える作業は API 層の内部だけに閉じ込められる。
 
-具体的な接続方式（Cloudflare Pages Functions から DynamoDB・Supabase Postgres への接続方法等）
+具体的な接続方式（Cloudflare Workers から DynamoDB・Supabase Postgres への接続方法等）
 は実装着手時に個別検証する（[overview.md](./overview.md) 未決事項）。
 
 ---

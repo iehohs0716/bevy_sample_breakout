@@ -25,7 +25,7 @@ React フロント（`frontend`）から起動する **単一レベル・クラ�
 
 | 項目 | 決定事項 |
 |---|---|
-| フロントホスティング | Cloudflare Pages |
+| フロントホスティング | Cloudflare Workers（Workers Static Assets） |
 | バックエンド（Auth・ユーザー情報） | Supabase（Postgres + Auth。[backend.md](./backend.md) §1） |
 | ゲームデータの保存（シナリオ／ゲーム／ブロック配置） | **DynamoDB**。シナリオ ID をキーとした KVS として保持する（[backend.md](./backend.md) §2） |
 | 画像ストレージ | Supabase Storage（変更なし。ゲームデータ側からは URL 参照のみ持つ） |
@@ -75,11 +75,11 @@ React フロント（`frontend`）から起動する **単一レベル・クラ�
 
 ```
                          ┌─────────────────────────┐
-                         │      Cloudflare Pages     │  静的配信 (React + WASM)
+                         │     Cloudflare Workers    │  静的配信 (React + WASM)
                          └────────────┬──────────────┘
                                       │ HTTPS（自前 API 契約のみ）
                          ┌────────────▼──────────────┐
-                         │  自前 API 層               │  Cloudflare Pages Functions
+                         │  自前 API 層               │  Cloudflare Workers
                          │  (Facade)                 │  フロントはこことしか話さない
                          └──┬───────────┬─────────┬──┘
                             │           │         │ 標準 SQL / Storage / AWS SDK 経由
@@ -119,7 +119,7 @@ React フロント（`frontend`）から起動する **単一レベル・クラ�
 | フェーズ | 内容 |
 |---|---|
 | 0（現状） | 単一レベル・クライアント完結の静的サイト |
-| 1 | Web 公開のみ（Cloudflare Pages + CI/CD、バックエンドなし） |
+| 1 | Web 公開のみ（Cloudflare Workers + CI/CD、バックエンドなし） |
 | 2 | UGC 基盤 MVP（Supabase: Auth + Storage + Postgres、レベル投稿・一覧・プレイ） |
 | 3 | スケール対応（必要になれば読み取りキャッシュ／KVS の追加を検討） |
 | 4 | いいね・検索・タグ・モデレーション等の拡張機能 |
@@ -132,7 +132,7 @@ React フロント（`frontend`）から起動する **単一レベル・クラ�
 [requirements.md](./requirements.md) にまとめた。以下は実現方式（アーキテクチャ）側の未決事項。
 
 - [ ] Supabase を Supabase 社のクラウド版で使うか、自前セルフホストするか（コスト・運用負荷が変わる）
-- [ ] Cloudflare Pages Functions から Postgres（Supabase／将来の Neon）への接続方式
+- [ ] Cloudflare Workers から Postgres（Supabase／将来の Neon）への接続方式
       （TCP 直結か、各社提供の HTTP 経由ドライバか）は実装着手時に個別検証が必要（[backend.md](./backend.md) §4）
 - [ ] 認証プロバイダも将来差し替える可能性を見込むか（見込む場合、Supabase Auth の JWT を
       API 層で標準的に検証するだけに留め、Supabase Auth 管理系 API への依存は避ける）。
