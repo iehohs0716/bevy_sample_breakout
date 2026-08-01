@@ -76,3 +76,7 @@ fn dispatch_event(name: &str, result: &str, score: usize) {
         Err(err) => warn!("CustomEvent {name} の生成に失敗しました: {err:?}"),
     }
 }
+
+/// ネイティブビルドでは JS が無いので no-op。
+#[cfg(not(target_arch = "wasm32"))]
+fn dispatch_event(_name: &str, _result: &str, _score: usize) {}

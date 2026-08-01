@@ -22,9 +22,11 @@ pub use terminate::{on_game_clear, on_game_over};
 use bevy::prelude::*;
 
 use crate::components::{
-    Ball, BallCollided, Brick, CollisionSound, GameAssets, GameState, Lives, LivesUi, Paddle,
-    Score, ScoreboardUi, Velocity,
+    Ball, BallCollided, Brick, GameAssets, GameState, Lives, LivesUi, Paddle, Score,
+    ScoreboardUi, Velocity,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use crate::components::CollisionSound;
 use crate::common::{spawn_brick, BrickAssets};
 use crate::config::{
     BALL_SPEED, BALL_STARTING_POSITION, INITIAL_BALL_DIRECTION, INITIAL_LIVES,
@@ -143,10 +145,13 @@ pub fn launch_ball_on_click(
     }
 }
 
+/// ブラウザの自動再生ポリシー上、ユーザー操作前は `AudioContext` が有効化されないため、
+/// Web版（wasm32）では衝突音の再生を行わない。ネイティブ版のみ再生する。
 pub fn play_collision_sound(
     _collided: On<BallCollided>,
-    mut commands: Commands,
-    sound: Res<CollisionSound>,
+    #[cfg(not(target_arch = "wasm32"))] mut commands: Commands,
+    #[cfg(not(target_arch = "wasm32"))] sound: Res<CollisionSound>,
 ) {
+    #[cfg(not(target_arch = "wasm32"))]
     commands.spawn((AudioPlayer(sound.clone()), PlaybackSettings::DESPAWN));
 }
