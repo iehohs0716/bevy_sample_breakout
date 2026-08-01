@@ -188,11 +188,12 @@ export function BevyGame({
       const wasmUrl = new URL("/wasm/breakout.js", window.location.origin).href;
       const wasmModule = await import(/* @vite-ignore */ wasmUrl);
 
-      // クエリを付けて明示的に渡し、リロード時に必ず最新を読ませる（開発時のキャッシュ事故防止）。
-      const wasmBin = new URL(
-        `/wasm/breakout_bg.wasm?t=${Date.now()}`,
-        window.location.origin,
-      ).href;
+      // クエリでキャッシュを無効化しない。約25MBあり、レベル切り替えのたびのフルリロード
+      // (BevyはWASM初期化をページ内でやり直せないため、レベル切り替えは毎回フルリロードになる)
+      // で毎回再ダウンロードされると重すぎるため、ブラウザキャッシュに乗せる。ビルドし直した後に
+      // 古いWASMが残る場合は、開発者側でハードリロード（キャッシュ無視の再読み込み）すればよい。
+      const wasmBin = new URL("/wasm/breakout_bg.wasm", window.location.origin)
+        .href;
 
       const init = wasmModule.default as (options?: {
         module_or_path?: string;

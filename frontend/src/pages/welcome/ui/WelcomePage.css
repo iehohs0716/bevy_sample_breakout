@@ -1,0 +1,40 @@
+.welcome-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  width: 100%;
+  min-height: 100vh;
+  padding: 2rem;
+  text-align: center;
+}
+
+.welcome-page__title {
+  margin: 0;
+  font-size: 2.5rem;
+  font-weight: 700;
+}
+
+.welcome-page__description {
+  margin: 0;
+  font-size: 1.1rem;
+  opacity: 0.8;
+  line-height: 1.6;
+}
+
+.welcome-page__button {
+  margin-top: 1rem;
+  padding: 0.75rem 2rem;
+  border-radius: 0.5rem;
+  background-color: #4f7cff;
+  color: #ffffff;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 0.2s ease;
+}
+
+.welcome-page__button:hover {
+  background-color: #3a63e0;
+}

@@ -1,0 +1,32 @@
+.level-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  background-color: canvas;
+}
+
+.level-card-thumbnail {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  display: block;
+}
+
+.level-card-title {
+  margin: 12px 12px 4px;
+  font-size: 1.1rem;
+}
+
+.level-card-author {
+  margin: 0 12px 12px;
+  font-size: 0.9rem;
+  opacity: 0.75;
+}
+
+.level-card-play-link {
+  margin: 0 12px 16px;
+  align-self: flex-start;
+}

@@ -185,6 +185,9 @@
   },
   "active": "52e1d04ce69ae92c",
   "lastOpenFiles": [
+    "20260801_fsd-vs-atomic-design.md",
+    "20260801_fsd-dependency-rules.md",
+    "20260801_fsd-overview.md",
     "20260801_frontend-mock-screens-plan.md",
     "20260731_cloudflare-d1-fit-evaluation.md",
     "20260731_cloudflare-pages-functions-postgres-tcp-connection.md",
@@ -207,9 +210,6 @@
     "20260725_rust-from-into-trait.md",
     "20260725_bevy-handle-clone-pitfall.md",
     "20260725_rust-match-and-pattern-binding.md",
-    "20260725_bevy-mesh-material-uv-basics.md",
-    "20260725_bevy-dynamic-mesh-build-brick-mesh.md",
-    "20260725_brick-destroyed-observer-event-lifecycle.md",
-    "20260725_brick-torn-edge-midpoint-displacement.md"
+    "20260725_bevy-mesh-material-uv-basics.md"
   ]
 }

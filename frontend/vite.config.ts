@@ -45,6 +45,11 @@ function bevyDevServer(): PluginOption {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), bevyDevServer()],
+  resolve: {
+    alias: {
+      "@": resolve(import.meta.dirname, "src"),
+    },
+  },
   server: {
     // Bevy(wgpu/WebGL2) と wasm-bindgen 出力を安定動作させるための設定。
     fs: { strict: false },

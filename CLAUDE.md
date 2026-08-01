@@ -33,6 +33,42 @@ Bevy 製ブロック崩し（`game_engine`）を WASM ビルドし、React フ�
       直接呼ばれるのは`injection`側だけで、通知の実装は`systems`経由でしか使われないため、
       独立トップレベルモジュールにはしない）
 - `frontend/` — Vite + React。WASM グルーの読み込みと初期化パラメータ受け渡しを担う。
+  アーキテクチャは [Feature-Sliced Design](https://fsd.how/ja/docs/get-started/overview/)（FSD）を
+  採用している。詳細は次節「frontend のアーキテクチャ（FSD）」を参照。
+
+## frontend のアーキテクチャ（Feature-Sliced Design）
+
+`frontend/src/` は [Feature-Sliced Design](https://fsd.how/ja/docs/get-started/overview/)（FSD）に
+従ってレイヤー分割している。現時点で実際に存在するレイヤーは次の4つ（上位ほど下位に依存できる、
+逆方向の依存は禁止）。
+
+- `app/` — アプリ全体のエントリ（ルーティング定義 `App.tsx`、グローバル CSS
+  `styles/index.css`）。Vite のエントリポイントである `main.tsx` だけはレイヤーの外
+  （`src/` 直下）に置く。
+- `pages/` — ルーティング対象となる画面単位のスライス（`welcome` / `level-list` / `play`）。
+  各スライスは `ui/` セグメントに実装を置き、`index.ts` で公開 API をエクスポートする。
+- `widgets/` — 複数ページから使い得る自己完結した大きな UI ブロック（`bevy-game`。WASM
+  化した Bevy を canvas に埋め込むコンポーネント本体）。
+- `entities/` — ドメイン上の名詞（`level`）。`model/`（型定義）・`lib/`（そのエンティティに
+  閉じた純粋な計算処理）・`api/`（データ取得。現状は実 API が無いためモックデータを返す）に
+  分割し、`index.ts` から必要な型・値だけを公開する。
+
+`features/`（ユーザー操作単位の機能）と `shared/`（layer 横断の共通コード）は、現状それらに
+該当する処理が発生していないため作成していない。**空のレイヤーを先回りして作らないこと。**
+該当する処理（例: レベル投稿・認証などの操作単位の機能、複数エンティティ／widgets から
+再利用される汎用 UI 部品）が実際に発生した時点で追加する。
+
+### 依存ルール
+
+- スライス間の参照は必ず各スライスの `index.ts`（公開 API）経由で行い、`ui/` や `model/` 配下
+  への深い import（例: `@/entities/level/api/mockLevels`）は禁止する。
+- 同一レイヤー内のスライス同士は互いに import しない（例: `pages/play` が
+  `pages/level-list` を参照することは禁止）。
+- import は相対パスではなく `@/` エイリアス（`tsconfig.json` の `paths` と `vite.config.ts`
+  の `resolve.alias` で `src/` に紐付け）を使う（例: `import { MOCK_LEVELS } from "@/entities/level"`）。
+- 上記のレイヤー・依存ルールは lint 等では強制していない（`game_engine` 側の設計規約と同様、
+  コードレビューで担保する運用）。将来違反が増えるようなら `steiger` 等の FSD 専用 lint の
+  導入を検討する。
 
 ## ビルド規約（必ずこの流れを踏む）
 
