@@ -62,6 +62,8 @@ services:
       # Must be superuser to alter reserved role。authenticator ロールのパスワード設定は
       # rest(PostgREST) が PGRST_DB_URI で実際に使っているため必要。
       - ./supabase-local/volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:Z
+      # poc_check テーブル定義（sandbox/supabase-rest-client-check/ の疎通確認用）
+      - ./supabase-local/volumes/db/poc_check.sql:/docker-entrypoint-initdb.d/init-scripts/50-poc-check.sql:Z
       # PGDATA directory is persisted between restarts
       # (Rancher Desktop の virtiofs 経由ではホストディレクトリへの chown が失敗するため、
       #  bind mount ではなく Docker 管理の named volume を使う)
