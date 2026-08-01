@@ -28,7 +28,10 @@ wasm-bindgen --out-dir "$OUT_DIR/wasm" --out-name "$OUT_NAME" --target web "$WAS
 # 任意: binaryen が入っていればサイズ最適化する。
 if command -v wasm-opt >/dev/null 2>&1; then
   echo "==> wasm-opt -Oz"
-  wasm-opt -Oz -o "$OUT_DIR/wasm/${OUT_NAME}_bg.wasm" "$OUT_DIR/wasm/${OUT_NAME}_bg.wasm"
+  # rustc の wasm32-unknown-unknown 出力は bulk-memory / nontrapping-float-to-int 等
+  # 複数のwasm機能を使うため、個別指定ではなく --all-features で一括許可する
+  # (wasm-opt はデフォルトで無効な機能を使う入力を validation error にするため)。
+  wasm-opt -Oz --all-features -o "$OUT_DIR/wasm/${OUT_NAME}_bg.wasm" "$OUT_DIR/wasm/${OUT_NAME}_bg.wasm"
 else
   echo "==> wasm-opt が無いためサイズ最適化はスキップ (brew install binaryen で有効化)"
 fi
