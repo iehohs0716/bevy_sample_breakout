@@ -185,6 +185,12 @@
   },
   "active": "52e1d04ce69ae92c",
   "lastOpenFiles": [
+    "20260801_frontend-mock-screens-plan.md",
+    "20260731_cloudflare-d1-fit-evaluation.md",
+    "20260731_cloudflare-pages-functions-postgres-tcp-connection.md",
+    "20260731_react-frontend-auth-check-is-ux-only.md",
+    "20260731_auth0-supabase-third-party-auth.md",
+    "20260731_supabase-graphql-and-db-only-usage.md",
     "20260731_question-mark-operator-early-return.md",
     "20260731_reflect-get-and-dyn-into-jsvalue.md",
     "20260730_dynamodb-schema-as-design-doc-json-schema.md",
@@ -204,12 +210,6 @@
     "20260725_bevy-mesh-material-uv-basics.md",
     "20260725_bevy-dynamic-mesh-build-brick-mesh.md",
     "20260725_brick-destroyed-observer-event-lifecycle.md",
-    "20260725_brick-torn-edge-midpoint-displacement.md",
-    "20260723_bevy-b0001-query-conflict-without.md",
-    "20260723_check-for-collisions-system.md",
-    "20260723_bevy-single-into-inner.md",
-    "20260723_bevy-init-vs-restart-state.md",
-    "20260723_bevy-assets-handle-add-pattern.md",
-    "20260723_rust-tuple-struct-and-dot-zero.md"
+    "20260725_brick-torn-edge-midpoint-displacement.md"
   ]
 }
