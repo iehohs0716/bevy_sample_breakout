@@ -32,9 +32,9 @@ use injection::{
 use systems::{
     apply_velocity_to_transform_object, check_ball_brick_collision, check_ball_deathzone_collision,
     check_ball_paddle_collision, check_ball_wall_collision, check_game_clear,
-    launch_ball_on_click, mark_broken_edges_on_brick_destroyed, move_paddle, on_game_clear,
-    on_game_over, play_collision_sound, redraw_broken_bricks, reset_game, setup, update_lives,
-    update_scoreboard,
+    draw_brick_outlines, launch_ball_on_click, mark_broken_edges_on_brick_destroyed, move_paddle,
+    on_game_clear, on_game_over, play_collision_sound, redraw_broken_bricks, reset_game, setup,
+    update_lives, update_scoreboard,
 };
 
 fn main() {
@@ -81,7 +81,7 @@ fn main() {
         )
         // 全ブロック破壊の判定もプレイ中のみ。0 になったら Cleared へ遷移する。
         .add_systems(Update, check_game_clear.run_if(in_state(GameState::Playing)))
-        .add_systems(Update, (update_scoreboard, update_lives))
+        .add_systems(Update, (update_scoreboard, update_lives, draw_brick_outlines))
         // ブロック破壊で更新された `BrokenEdges` を同フレームで反映するため衝突判定の後に走らせる。
         .add_systems(Update, redraw_broken_bricks.after(check_ball_brick_collision))
         // クリック待ち（GameStart=初回 / GameRestart=敗北後）中の左クリックでボール発射 → Playing へ。

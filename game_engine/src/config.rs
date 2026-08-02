@@ -53,6 +53,9 @@ pub const BACKGROUND_SIZE: Vec2 = Vec2::new(RIGHT_WALL - LEFT_WALL, TOP_WALL - B
 pub const PADDLE_COLOR: Color = Color::srgb(0.3, 0.3, 0.7);
 pub const BALL_COLOR: Color = Color::srgb(1.0, 0.5, 0.5);
 pub const BRICK_COLOR: Color = Color::srgb(0.5, 0.5, 1.0);
+// 無傷（未破壊）のブロック同士は見た目が繋がって1枚の絵に見えるため、個々のブロックの境界が
+// うっすら見えるよう、低アルファの輪郭線を重ねて描く（`systems::update::brick::draw_brick_outlines`）。
+pub const BRICK_OUTLINE_COLOR: Color = Color::srgba(0.0, 0.0, 0.0, 0.25);
 pub const WALL_COLOR: Color = Color::srgb(0.8, 0.8, 0.8);
 pub const TEXT_COLOR: Color = Color::srgb(0.5, 0.5, 1.0);
 pub const SCORE_COLOR: Color = Color::srgb(1.0, 0.5, 0.5);

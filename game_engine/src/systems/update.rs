@@ -9,4 +9,7 @@ pub use collision::{
 };
 
 mod brick;
-pub use brick::{check_game_clear, mark_broken_edges_on_brick_destroyed, redraw_broken_bricks};
+pub use brick::{
+    check_game_clear, draw_brick_outlines, mark_broken_edges_on_brick_destroyed,
+    redraw_broken_bricks,
+};

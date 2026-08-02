@@ -12,8 +12,8 @@ pub use setup::setup;
 mod update;
 pub use update::{
     check_ball_brick_collision, check_ball_deathzone_collision, check_ball_paddle_collision,
-    check_ball_wall_collision, check_game_clear, mark_broken_edges_on_brick_destroyed,
-    redraw_broken_bricks,
+    check_ball_wall_collision, check_game_clear, draw_brick_outlines,
+    mark_broken_edges_on_brick_destroyed, redraw_broken_bricks,
 };
 
 mod terminate;

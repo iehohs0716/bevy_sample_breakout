@@ -186,6 +186,7 @@ pub fn diff_brick_layout(
     let background_image_size = Vec2::new(background_image.width() as f32, background_image.height() as f32);
     let brick_image_size = Vec2::new(brick_image.width() as f32, brick_image.height() as f32);
 
+    // とりあえず一通り、全てを網羅するようブロックを作成しておく
     let (candidate_positions, candidate_cells) = brick_grid_candidates(paddle_y, cell_size);
 
     let mut positions = Vec::new();

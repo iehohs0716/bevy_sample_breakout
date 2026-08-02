@@ -6,6 +6,7 @@ use bevy::prelude::*;
 
 use crate::common::build_brick_mesh;
 use crate::components::{Brick, BrickDestroyed, BrokenEdges, GameState};
+use crate::config::BRICK_OUTLINE_COLOR;
 
 /// `BrokenEdges` が変化したブロックだけ、メッシュを壊れた輪郭で再構築する。
 pub fn redraw_broken_bricks(
@@ -16,6 +17,16 @@ pub fn redraw_broken_bricks(
         if let Some(mut mesh) = meshes.get_mut(&mesh2d.0) {
             *mesh = build_brick_mesh(brick.size, brick.cell, broken_edge, &brick.fill);
         }
+    }
+}
+
+/// 各ブロックの境界をうっすら描画する。無傷（未破壊）のブロック同士はメッシュの見た目が
+/// 繋がって1枚の絵に見えてしまう（画像を貼った盤面の「窓」がシームレスに並ぶため）ので、
+/// 低アルファの矩形輪郭を重ねて描き、個々のブロックの位置・大きさを視認できるようにする
+/// （毎フレーム描き直すデバッグ線であり、`Brick` のメッシュ自体は変更しない）。
+pub fn draw_brick_outlines(mut gizmos: Gizmos, bricks: Query<(&Transform, &Brick)>) {
+    for (transform, brick) in &bricks {
+        gizmos.rect_2d(transform.translation.truncate(), brick.size, BRICK_OUTLINE_COLOR);
     }
 }
 
