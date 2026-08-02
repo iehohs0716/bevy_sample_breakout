@@ -12,6 +12,8 @@
   width: 100%;
   aspect-ratio: 16 / 10;
   object-fit: cover;
+  /* 縦長画像を中央クロップすると被写体の上側（顔など）が切れやすいため、上寄せでクロップする。 */
+  object-position: top;
   display: block;
 }
 

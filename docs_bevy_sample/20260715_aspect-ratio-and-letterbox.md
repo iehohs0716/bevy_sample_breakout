@@ -50,10 +50,14 @@ fn contain_fit(content: Vec2, container: Vec2) -> Vec2 {
 
 ## 4. 背景画像への適用
 
-背景は contain フィットした寸法を `custom_size` に入れて中央に置くだけ:
+背景は contain フィットした寸法を `custom_size` に入れて配置する。
+
+**2026-08-03 更新**: 配置は中央ではなく**水平中央・垂直上寄せ**に変更した
+（[[20260803_image-top-alignment]] 参照）。`Anchor::TOP_CENTER` を使い、原点を
+`TOP_WALL`（アリーナ天井）に置く。
 
 ```rust
-// setup.rs（要点）
+// systems/setup.rs（要点）
 let (background_handle, background_size) = match background_override.0.take() {
     Some(image) => {
         let image_size = Vec2::new(image.width() as f32, image.height() as f32);
@@ -64,7 +68,8 @@ let (background_handle, background_size) = match background_override.0.take() {
 };
 commands.spawn((
     Sprite { image: background_handle, custom_size: Some(background_size), ..default() },
-    Transform::from_xyz(0.0, 0.0, -10.0),
+    Anchor::TOP_CENTER,
+    Transform::from_xyz(0.0, TOP_WALL, -10.0),
 ));
 ```
 

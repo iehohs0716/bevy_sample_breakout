@@ -2,6 +2,7 @@
 //! スコア表示・壁・ブロックを spawn する。
 
 use bevy::prelude::*;
+use bevy::sprite::Anchor;
 
 use crate::components::{
     Ball, Collider, CollisionSound, DeathZone, GameAssets, LivesUi, Paddle, ScoreboardUi, Velocity,
@@ -10,7 +11,7 @@ use crate::components::{
 use crate::config::{
     BACKGROUND_IMAGE_PATH, BACKGROUND_SIZE, BALL_COLOR, BALL_DIAMETER, BALL_STARTING_POSITION,
     BOTTOM_WALL, BRICK_SIZE, GAP_BETWEEN_PADDLE_AND_FLOOR, PADDLE_COLOR, PADDLE_SIZE, SCORE_COLOR,
-    SCOREBOARD_FONT_SIZE, SCOREBOARD_TEXT_PADDING, TEXT_COLOR,
+    SCOREBOARD_FONT_SIZE, SCOREBOARD_TEXT_PADDING, TEXT_COLOR, TOP_WALL,
 };
 use crate::injection::{
     default_brick_layout, diff_brick_layout, injected_cell_size, BackgroundOverride,
@@ -54,7 +55,12 @@ pub fn setup(
             custom_size: Some(background_size),
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, -10.0),     // z を負にして他の要素（壁・ブロック・ボール）より後ろに配置する。
+        // 内接表示は水平中央・垂直上寄せ（`util::inscribed_source_rect` と同じ規約）。
+        // アンカーを上端中央にし、原点を Y=TOP_WALL（アリーナ天井）に置くことで、
+        // 画像の上端をアリーナ天井に揃える。横長画像で余った高さの余白は下側だけに寄る。
+        Anchor::TOP_CENTER,
+        // z を負にして他の要素（壁・ブロック・ボール）より後ろに配置する。
+        Transform::from_xyz(0.0, TOP_WALL, -10.0),
     ));
 
     // Sound

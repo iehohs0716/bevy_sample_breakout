@@ -14,10 +14,17 @@ pub fn contain_fit(content: Vec2, container: Vec2) -> Vec2 {
     content * scale
 }
 
-/// 「画像 1 枚を、引き伸ばさずコンテナ（例: アリーナ）いっぱいに内接表示した」と仮定したとき、
+/// 「画像 1 枚を、引き伸ばさずコンテナ（例: アリーナ）に内接表示した」と仮定したとき、
 /// コンテナ座標系のある矩形領域（例: 1 個のブロックが占める範囲）が、画像のどのピクセル範囲を
 /// 覆っているかを求める。呼び出し側は主に「表示上のこの範囲は、元画像のここを切り出せば描ける」
 /// を知りたいときに使う（ブロックのテクスチャ切り出しや、2 画像を同じ領域で比較する差分判定など）。
+///
+/// 内接表示の位置は**水平方向は中央寄せ・垂直方向は上寄せ**（コンテナの上端に画像の上端を
+/// 合わせる）。画像が縦長（`container` よりアスペクト比が小さい）ならコンテナの高さいっぱいに
+/// 表示されるため上寄せと中央寄せで結果は変わらないが、画像が横長（`container` よりアスペクト比が
+/// 大きい）だと表示は幅いっぱいになり、余った高さぶんが下側だけの余白になる（上下に分かれた
+/// 余白にはならない）。ブロック自動配置（差分判定）はアリーナ上部だけを対象にする設計のため、
+/// 横長画像を使う場合は絵の上端がアリーナ上端に揃っていた方が、その対象範囲との整合が取れる。
 ///
 /// # 引数（すべて同じ「コンテナ中心を原点、y 上向き」の座標系）
 /// - `region_center` / `region_size`: 知りたい矩形領域の**中心座標**と**幅・高さ**
@@ -39,10 +46,13 @@ pub fn inscribed_source_rect(
     container: Vec2,
     image_size: Vec2,
 ) -> Option<Rect> {
-    // 画像をコンテナに内接させたときの表示サイズ。コンテナ中心が原点なので、
-    // 表示範囲は x,y ともに [-half, half]。
     let display = contain_fit(image_size, container);
-    let half = display / 2.0;
+    // 水平方向は中央寄せなので [-half_x, half_x]。
+    let half_x = display.x / 2.0;
+    // 垂直方向は上寄せ。コンテナ上端（`container.y / 2`）に画像の上端を揃え、
+    // 表示高さぶんだけ下端が決まる。
+    let top_y = container.y / 2.0;
+    let bottom_y = top_y - display.y;
 
     // 知りたい領域の四辺（コンテナ座標系）。
     let left = region_center.x - region_size.x / 2.0;
@@ -51,16 +61,16 @@ pub fn inscribed_source_rect(
     let bottom = region_center.y - region_size.y / 2.0;
 
     // 内接表示の範囲外にはみ出す領域には対応する画像ピクセルが無い。
-    if left < -half.x || right > half.x || bottom < -half.y || top > half.y {
+    if left < -half_x || right > half_x || bottom < bottom_y || top > top_y {
         return None;
     }
 
-    // 内接表示範囲（[-half, half]）の中での位置を 0..1 の割合に直し、画像のピクセル数を掛ける。
-    let u_min = (left + half.x) / display.x * image_size.x;
-    let u_max = (right + half.x) / display.x * image_size.x;
-    // 内接表示の上端 (y=+half.y) を画像の上端 (ピクセル y=0) に対応させて上下反転する。
-    let v_min = (half.y - top) / display.y * image_size.y;
-    let v_max = (half.y - bottom) / display.y * image_size.y;
+    // 内接表示範囲の中での位置を 0..1 の割合に直し、画像のピクセル数を掛ける。
+    let u_min = (left + half_x) / display.x * image_size.x;
+    let u_max = (right + half_x) / display.x * image_size.x;
+    // 内接表示の上端 (y=top_y) を画像の上端 (ピクセル y=0) に対応させて上下反転する。
+    let v_min = (top_y - top) / display.y * image_size.y;
+    let v_max = (top_y - bottom) / display.y * image_size.y;
 
     Some(Rect::new(u_min, v_min, u_max, v_max))
 }
