@@ -185,6 +185,12 @@
   },
   "active": "52e1d04ce69ae92c",
   "lastOpenFiles": [
+    "20260802_backend-same-worker-architecture-decision-log.md",
+    "20260802_google-sso-feasibility-with-jwks-verification.md",
+    "20260802_hono-requirement-for-same-worker-frontend-backend.md",
+    "20260802_standalone-workers-backend-supabase-dynamodb-crud.md",
+    "20260802_kvs-nosql-cross-service-comparison.md",
+    "20260802_cloudflare-storage-products-comparison.md",
     "20260801_cloudflare-pages-local-deploy-practice.md",
     "20260801_cloudflare-pages-deploy-considerations.md",
     "20260801_fsd-vs-atomic-design.md",
@@ -204,12 +210,6 @@
     "20260730_authjs-oauth-on-cloudflare-pages-functions.md",
     "20260730_web-publish-and-ugc-architecture.md",
     "20260730_supabase-react-crud-sso-samples.md",
-    "20260729_option-take-unwrap-or-else.md",
-    "20260728_mut-transform-and-collision-module-split.md",
-    "20260728_rust-lifetimes-basics.md",
-    "20260728_collision-bounding-box-generics.md",
-    "20260728_collision-generics-and-lifetimes.md",
-    "20260725_rust-from-into-trait.md",
-    "20260725_bevy-handle-clone-pitfall.md"
+    "20260729_option-take-unwrap-or-else.md"
   ]
 }

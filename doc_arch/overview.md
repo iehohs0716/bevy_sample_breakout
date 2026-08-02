@@ -26,6 +26,7 @@ React フロント（`frontend`）から起動する **単一レベル・クラ�
 | 項目 | 決定事項 |
 |---|---|
 | フロントホスティング | Cloudflare Workers（Workers Static Assets） |
+| 自前 API 層（Facade）のホスティング | フロントと同一の Cloudflare Workers プロジェクトに同居（Workers Static Assets の `run_worker_first` で `/api/*` のみ Worker 側に振り分け。[backend.md](./backend.md) §3） |
 | バックエンド（Auth・ユーザー情報） | Supabase（Postgres + Auth。[backend.md](./backend.md) §1） |
 | ゲームデータの保存（シナリオ／ゲーム／ブロック配置） | **DynamoDB**。シナリオ ID をキーとした KVS として保持する（[backend.md](./backend.md) §2） |
 | 画像ストレージ | Supabase Storage（変更なし。ゲームデータ側からは URL 参照のみ持つ） |
@@ -73,23 +74,26 @@ React フロント（`frontend`）から起動する **単一レベル・クラ�
 
 ## 3. 拡張後の全体アーキテクチャ（To-Be）
 
+```mermaid
+flowchart TB
+    subgraph CF["Cloudflare Workers（単一プロジェクト）"]
+        direction LR
+        Static["静的配信<br/>(React + WASM)<br/>Workers Static Assets"]
+        API["自前API層 (Facade)<br/>/api/* のみ run_worker_first で振り分け<br/>フロントはこことしか話さない"]
+    end
+
+    API -->|"標準SQL / Storage / AWS SDK 経由"| Auth
+    API --> Storage
+    API --> GameData
+
+    Auth[("Auth・ユーザー情報<br/>Supabase Auth+Postgres<br/>(JWT発行・ユーザー行)<br/>※将来Neon等へ差替")]
+    Storage[("Storage<br/>Supabase Storage<br/>(画像: 背景/ブロック)")]
+    GameData[("ゲームデータ<br/>DynamoDB<br/>(シナリオ/ゲーム/ブロック配置)<br/>シナリオIDがパーティションキー")]
 ```
-                         ┌─────────────────────────┐
-                         │     Cloudflare Workers    │  静的配信 (React + WASM)
-                         └────────────┬──────────────┘
-                                      │ HTTPS（自前 API 契約のみ）
-                         ┌────────────▼──────────────┐
-                         │  自前 API 層               │  Cloudflare Workers
-                         │  (Facade)                 │  フロントはこことしか話さない
-                         └──┬───────────┬─────────┬──┘
-                            │           │         │ 標準 SQL / Storage / AWS SDK 経由
-        ┌───────────────────▼──┐ ┌──────▼────────┐ ┌▼──────────────────────┐
-        │ Auth・ユーザー情報      │ │ Storage         │ │ ゲームデータ             │
-        │ Supabase Auth+Postgres│ │ Supabase Storage │ │ DynamoDB               │
-        │ (JWT 発行・ユーザー行)  │ │ (画像: 背景/ブロック)│ │ (シナリオ/ゲーム/ブロック配置) │
-        │ ※将来 Neon 等へ差替   │ │                 │ │ シナリオIDがパーティションキー │
-        └────────────────────┘ └─────────────────┘ └────────────────────────┘
-```
+
+フロントと自前 API 層は同一の Cloudflare Worker 内に同居する（別オリジンではないため CORS 対応は
+不要）。ブラウザからのリクエストは `/api/*` かどうかで Worker 内部で振り分けられ、フロントは
+「自前 API の契約（`/api/levels` 等）」としか話さない、という制約自体は変わらない。
 
 処理の流れ（UGC MVP）:
 

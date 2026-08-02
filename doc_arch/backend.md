@@ -71,10 +71,40 @@ PostgREST を直接叩き、認可を RLS（Row Level Security）ポリシー内
 
 **方針**: フロントエンドは Supabase の SDK・PostgREST・Storage SDK を **直接叩かない**
 （[frontend.md](./frontend.md)）。代わりに、アプリ自身が所有する薄い API 層（Cloudflare
-Workers を想定。フロントと同じ Cloudflare Workers 上にデプロイでき（Workers Static Assets で
-静的アセットも配信）、追加インフラが増えない）を挟み、**フロントはこの自前 API 層としか通信しない**。Supabase 固有の呼び出し方は
+Workers）を挟み、**フロントはこの自前 API 層としか通信しない**。Supabase 固有の呼び出し方は
 すべてこの API 層の内部実装に閉じ込める。実装としては一般的な **Facade パターン**（＋ Storage
 部分は Adapter パターン）そのものであり、目新しい仕組みを導入するわけではない。
+
+**ホスティング形態**: この自前 API 層は、フロント（React + WASM の静的アセット）と**同一の
+Cloudflare Workers プロジェクト**に同居させる。Workers Static Assets の `run_worker_first`
+（例: `["/api/*"]`）で `/api/*` 宛のリクエストのみ Worker 側のロジックに振り分ける。
+`run_worker_first` に一致しないリクエストは Worker 本体を経由せず Workers Static Assets が
+直接処理するため、Worker のコード側に `env.ASSETS.fetch()` によるフォールバック実装は不要。
+フロントと自前 API 層は同一オリジンになるため CORS 対応も不要（§7）。
+
+**ディレクトリ構成**: ソースコードは `frontend/`（React + WASM。`src/` 配下は Feature-Sliced
+Design。詳細は [frontend.md](./frontend.md)）と `worker/`（自前 API 層本体）の 2 つに分ける。
+FSD はフロントエンド専用の方法論であり `worker/` には適用されない。
+
+```
+frontend/            # Vite + React（src/ 配下は FSD）
+├── src/
+└── dist/            # `vite build` の成果物
+worker/              # Cloudflare Worker 本体（自前 API 層）
+├── src/
+│   └── index.ts
+└── wrangler.jsonc    # main: "./src/index.ts", assets.directory: "../frontend/dist"
+```
+
+`worker/wrangler.jsonc` の `assets.directory` が `frontend/dist` を相対パスで参照する形にし、
+`worker/` から `wrangler deploy` を実行すると両者が 1 つの Cloudflare Worker としてデプロイされる。
+デプロイ手順・CI/CD 構成は [hosting-and-cicd.md](./hosting-and-cicd.md) を参照。
+
+Worker 側ルーティングの実装（Hono 等の採用可否を含む）は自由度が高く、
+`docs_bevy_sample/20260802_hono-requirement-for-same-worker-frontend-backend.md` を参照。
+Supabase/DynamoDB 接続方式の実装調査は
+`docs_bevy_sample/20260802_standalone-workers-backend-supabase-dynamodb-crud.md`
+（CORS の節 §2 を除き、Hyperdrive・JWT 検証・DynamoDB 接続の内容はそのまま参考にできる）。
 
 | 要素 | Supabase 標準の使い方 | ロックインの度合い | ポータブルにする方法 |
 |---|---|---|---|
@@ -252,7 +282,8 @@ Storage 1 箇所に画像を集約してよい**が、以下は明示的に対�
   追加で有効化してもよいが、それ単体を認可の主体にはしない（RLS に依存すると Neon 等への
   移行時に丸ごと作り直しになるため）。ゲームデータ側（DynamoDB）には RLS 相当の仕組みが
   存在しないため、認可は完全に API 層のコードのみで担保する
-- CORS: Supabase Storage バケットの `allowedOrigins` を本番ドメイン・開発オリジンに限定登録する
-  （詳細は §5.3）。ワイルドカード許可はしない
+- CORS: 自前 API 層はフロントと同一オリジン（同じ Cloudflare Worker）になるため、API 呼び出し
+  自体には CORS 対応は不要。ただし Supabase Storage バケットの `allowedOrigins` は本番ドメイン・
+  開発オリジンに限定登録する（詳細は §5.3）。ワイルドカード許可はしない
 - モデレーション: MVP では通報機能なし。公開前提での運用リスクとして明記し、
   将来拡張（[requirements.md](./requirements.md)）で対応
