@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "20260711_bevy-breakout-setup-troubleshooting.md",
+                "file": "20260802_brick-diff-auto-layout.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "20260711_bevy-breakout-setup-troubleshooting"
+              "title": "20260802_brick-diff-auto-layout"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "20260711_bevy-breakout-setup-troubleshooting.md",
+                "file": "20260802_brick-diff-auto-layout.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "20260711_bevy-breakout-setup-troubleshootingへのバックリンク"
+              "title": "20260802_brick-diff-auto-layoutへのバックリンク"
             }
           },
           {
@@ -113,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "20260711_bevy-breakout-setup-troubleshooting.md",
+                "file": "20260802_brick-diff-auto-layout.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "20260711_bevy-breakout-setup-troubleshootingからのアウトゴーイングリンク"
+              "title": "20260802_brick-diff-auto-layoutからのアウトゴーイングリンク"
             }
           },
           {
@@ -156,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "20260711_bevy-breakout-setup-troubleshooting.md",
+                "file": "20260802_brick-diff-auto-layout.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "20260711_bevy-breakout-setup-troubleshootingのアウトライン"
+              "title": "20260802_brick-diff-auto-layoutのアウトライン"
             }
           }
         ]
@@ -185,6 +185,14 @@
   },
   "active": "52e1d04ce69ae92c",
   "lastOpenFiles": [
+    "20260802_option-combinator-chain.md.tmp.76123.a4df9dd5f52d",
+    "20260802_option-combinator-chain.md.tmp.76123.37c8cb63a9bc",
+    "20260802_rust-method-chaining-overview.md",
+    "20260802_option-combinator-chain.md",
+    "20260711_bevy-breakout-setup-troubleshooting.md",
+    "20260802_brick-diff-auto-layout.md.tmp.76123.01e8fb477755",
+    "20260802_brick-diff-auto-layout.md.tmp.76123.01fb6b53a82f",
+    "20260802_brick-diff-auto-layout.md",
     "20260802_backend-same-worker-architecture-decision-log.md",
     "20260802_google-sso-feasibility-with-jwks-verification.md",
     "20260802_hono-requirement-for-same-worker-frontend-backend.md",
@@ -205,11 +213,6 @@
     "20260731_question-mark-operator-early-return.md",
     "20260731_reflect-get-and-dyn-into-jsvalue.md",
     "20260730_dynamodb-schema-as-design-doc-json-schema.md",
-    "20260730_game-scenario-data-model-supabase-dynamodb.md",
-    "20260730_doc-arch-split-and-concurrent-session-conflict.md",
-    "20260730_authjs-oauth-on-cloudflare-pages-functions.md",
-    "20260730_web-publish-and-ugc-architecture.md",
-    "20260730_supabase-react-crud-sso-samples.md",
-    "20260729_option-take-unwrap-or-else.md"
+    "20260730_game-scenario-data-model-supabase-dynamodb.md"
   ]
 }

@@ -40,9 +40,13 @@ export async function startBevyGame({
   // 初期ブロック配置。指定があれば渡す。無ければ Bevy 側のデフォルト配置になる。
   if (bricks && bricks.length > 0) {
     config.bricks = bricks;
-    if (cellSize) {
-      config.cellSize = cellSize;
-    }
+  }
+
+  // セルサイズは bricks とは独立に渡す。bricks 明示配置ではそのセルサイズとして、
+  // bricks 無し（デフォルト敷き詰め、または背景・ブロック画像の差分による自動配置）では
+  // その敷き詰め・差分判定の粒度として使われる。未指定なら Bevy 側デフォルト（50x30）。
+  if (cellSize) {
+    config.cellSize = cellSize;
   }
 
   // ブロック用の画像。背景と同様に React 側で fetch してバイト列を渡す。

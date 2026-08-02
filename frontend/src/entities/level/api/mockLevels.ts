@@ -35,6 +35,25 @@ export const MOCK_LEVELS: Level[] = [
     bricks: buildCenteredBlockLayout({ width: 50, height: 30 }),
   },
   {
+    // ブロック位置を明示指定せず、背景画像とブロック画像の「差分」から自動でブロックを
+    // 配置する例（game_engine/src/injection.rs の diff_brick_layout）。bricks を空にすると
+    // 明示配置が無いと判定され、背景・ブロック画像が両方指定されているため自動生成が発火する。
+    // diff_brick_image.png は diff_background.png に対し、上端の帯（アリーナ天井付近）と
+    // 中段の帯（マゼンタ）の 2 箇所だけ絵柄を変えてある。上端の帯は差分ありとしてブロック化
+    // されるが、中段の帯は config.rs の BRICK_DIFF_LAYOUT_MIN_HEIGHT_RATIO（高さ制限）次第で
+    // 対象外になる（＝差分があってもブロック化されず背景のまま見える）想定。
+    // cellSize は bricks が空でも効く（Bevy 側のデフォルト 50x30 ではなく、ここで
+    // 指定した粒度で差分判定・ブロック生成が行われることの確認を兼ねる）。
+    id: "diff-auto-layout-sample",
+    title: "自動配置サンプル（画像差分）",
+    author: "system",
+    thumbnailUrl: "/assets/backgrounds/diff_brick_image.png",
+    background: "/assets/backgrounds/diff_background.png",
+    brickImage: "/assets/backgrounds/diff_brick_image.png",
+    cellSize: { width: 25, height: 20 },
+    bricks: [],
+  },
+  {
     // 外部ホストの画像をbackgroundに指定する例。picsum.photosはCORSを許可しているため、
     // 同一オリジンの/assets配下の画像と同様にReact側からfetchしてBevyへ渡せる
     // （docs_bevy_sample/20260711_external-image-cors-and-formats.md参照。配信元が

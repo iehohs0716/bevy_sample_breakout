@@ -20,10 +20,12 @@ export type BevyGameProps = {
    */
   bricks?: Array<{ x: number; y: number }>;
   /**
-   * `bricks` で配置したブロック共通のセルの大きさ（幅・高さ、px 相当）。
-   * `bricks` とセットで指定したときのみ効く（`cellSize` 単独では無視される。
-   * `bricks` 未指定時のデフォルト敷き詰め配置は Bevy 側の固定サイズ 50x30 を使うため）。
-   * `bricks` を渡しつつ `cellSize` を省いた場合は Bevy 側のデフォルトサイズ（50x30）になる。
+   * ブロック共通のセルの大きさ（幅・高さ、px 相当）。`bricks` の有無に関わらず効く。
+   * - `bricks` を渡した場合: その配置のセルサイズとして使う。
+   * - `bricks` を渡さない場合: `background` + `brickImage` の両方があれば、2 画像の差分から
+   *   自動配置するブロックの粒度として使う。それも無ければ、アリーナを敷き詰めるデフォルト
+   *   配置の粒度として使う。
+   * 未指定の場合は Bevy 側のデフォルトサイズ（50x30）になる。
    */
   cellSize?: { width: number; height: number };
   /**

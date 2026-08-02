@@ -9,11 +9,12 @@ use crate::components::{
 };
 use crate::config::{
     BACKGROUND_IMAGE_PATH, BACKGROUND_SIZE, BALL_COLOR, BALL_DIAMETER, BALL_STARTING_POSITION,
-    BOTTOM_WALL, GAP_BETWEEN_PADDLE_AND_FLOOR, PADDLE_COLOR, PADDLE_SIZE, SCORE_COLOR,
+    BOTTOM_WALL, BRICK_SIZE, GAP_BETWEEN_PADDLE_AND_FLOOR, PADDLE_COLOR, PADDLE_SIZE, SCORE_COLOR,
     SCOREBOARD_FONT_SIZE, SCOREBOARD_TEXT_PADDING, TEXT_COLOR,
 };
 use crate::injection::{
-    default_brick_layout, BackgroundOverride, BrickImageOverride, BrickLayoutOverride,
+    default_brick_layout, diff_brick_layout, injected_cell_size, BackgroundOverride,
+    BrickImageOverride, BrickLayoutOverride,
 };
 use crate::common::{spawn_brick, BrickAssets};
 use crate::util::contain_fit;
@@ -35,6 +36,8 @@ pub fn setup(
     // background_override.0.take()の成否によって挙動を変更
     // 成功 -> `Assets<Image>` に登録してハンドル(画像の参照)を取得する。
     // 失敗 -> 既存のリソースを使う
+    // `background_was_overridden` はブロックの画像差分自動配置（後述）の発火条件判定に使う。
+    let background_was_overridden = background_override.0.is_some();
     let (background_handle, background_size) = match background_override.0.take() {
         Some(image) => {
             let image_size = Vec2::new(image.width() as f32, image.height() as f32);
@@ -45,7 +48,9 @@ pub fn setup(
     };
     commands.spawn((
         Sprite {
-            image: background_handle,
+            // ブロックの画像差分自動配置（後述）でも同じ画像を参照するため、ハンドルは
+            // clone して渡す（Handle は Arc ベースで clone は軽量）。
+            image: background_handle.clone(),
             custom_size: Some(background_size),
             ..default()
         },
@@ -146,12 +151,30 @@ pub fn setup(
         (images.add(image), size)
     });
 
-    // ブロック配置を確定する。React（JS）が配置を渡していればそれを、無ければアリーナを敷き詰める
-    // デフォルト配置を使う。
-    let brick_layout = brick_layout_override
-        .0
-        .take()
-        .unwrap_or_else(|| default_brick_layout(paddle_y));
+    // ブロック配置を確定する。優先順位は
+    // 1. React（JS）が明示指定した配置（`brick_layout_override`）
+    // 2. 背景画像・ブロック画像が両方とも JS 由来なら、2 画像の差分から自動生成
+    //    （`diff_brick_layout`。差分が 1 つも無ければ 3 にフォールバック）
+    // 3. アリーナを敷き詰めるデフォルト配置
+    // 差分計算には生ピクセルが要るが、`Assets<Image>` 登録後でも `images.get(&handle)` で
+    // 参照を取り直せる（デコード時に CPU 側データも保持する設定にしているため）。
+    // セルサイズは `bricks`（明示配置）が無くても JS の `cellSize` 指定を使う（2・3 経路共通。
+    // 無指定なら `BRICK_SIZE`）。
+    let cell_size = injected_cell_size().unwrap_or(BRICK_SIZE);
+    let brick_layout = brick_layout_override.0.take().unwrap_or_else(|| {
+        let diffed = background_was_overridden
+            .then(|| {
+                brick_image
+                    .as_ref()
+                    .and_then(|(handle, _)| images.get(handle))
+                    .zip(images.get(&background_handle))
+                    .and_then(|(brick_img, background_img)| {
+                        diff_brick_layout(background_img, brick_img, paddle_y, cell_size)
+                    })
+            })
+            .flatten();
+        diffed.unwrap_or_else(|| default_brick_layout(paddle_y, cell_size))
+    });
 
     // 各ブロックを配置座標に spawn する（＝起動時の初期盤面）。初回配置は setup が担い、
     // 敗北後の再スタート（GameOver→GameRestart）でのブロック作り直しは reset_game が担う。

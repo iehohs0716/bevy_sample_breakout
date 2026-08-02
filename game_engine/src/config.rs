@@ -57,6 +57,16 @@ pub const WALL_COLOR: Color = Color::srgb(0.8, 0.8, 0.8);
 pub const TEXT_COLOR: Color = Color::srgb(0.5, 0.5, 1.0);
 pub const SCORE_COLOR: Color = Color::srgb(1.0, 0.5, 0.5);
 
+// 画像差分による自動ブロック生成（`injection::diff_brick_layout`）関連の定数。
+// 背景画像とブロック画像の両方が注入され、かつブロック配置が明示指定されていない場合にのみ使う。
+/// 自動生成を許可する高さの下限比率。0.0 = バー（パドル）の位置、1.0 = アリーナ天井
+/// （`TOP_WALL`）。この比率未満の高さには（画像差分があっても）ブロックを生成しない。
+pub const BRICK_DIFF_LAYOUT_MIN_HEIGHT_RATIO: f32 = 0.2;
+/// 背景画像とブロック画像の同一セル領域の平均色を比較し、ブロックを生成するかどうかを判定する
+/// しきい値（RGB のユークリッド距離。各チャンネル 0..1 スケールなので最大 `sqrt(3)` 程度）。
+/// これを超えたセルだけを「差分あり」としてブロックにする。実画像で試して調整する前提の仮値。
+pub const BRICK_DIFF_COLOR_THRESHOLD: f32 = 0.1;
+
 // ブロック破壊面のギザギザ（中点変位法）関連の定数。
 /// 中点変位の再帰段数。段数ぶん辺が細分化される。
 pub const TEAR_DEPTH: u32 = 2;
