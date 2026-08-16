@@ -1,0 +1,91 @@
+.oauth-sandbox-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  width: 100%;
+  min-height: 100vh;
+  padding: 2rem;
+  text-align: center;
+}
+
+.oauth-sandbox-page__title {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.oauth-sandbox-page__description {
+  margin: 0;
+  max-width: 32rem;
+  font-size: 1rem;
+  opacity: 0.8;
+  line-height: 1.6;
+}
+
+.oauth-sandbox-page__status-badge {
+  margin: 0;
+  padding: 0.3rem 1rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.oauth-sandbox-page__status-badge--idle {
+  background-color: #eeeeee;
+  color: #555555;
+}
+
+.oauth-sandbox-page__status-badge--redirecting {
+  background-color: #e8f0fe;
+  color: #1a56db;
+}
+
+.oauth-sandbox-page__status-badge--loggedIn {
+  background-color: #e6f4ea;
+  color: #1e7e34;
+}
+
+.oauth-sandbox-page__status-badge--error {
+  background-color: #fdecea;
+  color: #d93025;
+}
+
+.oauth-sandbox-page__error {
+  color: #d93025;
+  font-weight: 600;
+}
+
+.oauth-sandbox-page__result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.oauth-sandbox-page__user-info {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0.25rem 1rem;
+  text-align: left;
+  font-size: 0.95rem;
+}
+
+.oauth-sandbox-page__user-info dt {
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.oauth-sandbox-page__user-info dd {
+  margin: 0;
+}
+
+.oauth-sandbox-page__logout-button {
+  padding: 0.6rem 1.5rem;
+  border: 1px solid #ccc;
+  border-radius: 0.5rem;
+  background-color: transparent;
+  font-size: 1rem;
+  cursor: pointer;
+}

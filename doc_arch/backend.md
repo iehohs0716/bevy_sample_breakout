@@ -125,6 +125,12 @@ Supabase/DynamoDB 接続方式の実装調査は
 許容する判断である。ただし DynamoDB へのアクセスも同じ Facade（自前 API 層）の内部に閉じ込め、
 フロントからは直接叩かせない点は同じ（[overview.md](./overview.md) の確定事項表）。
 
+**注記（Supavisorとローカル環境）**: ローカル環境（[deploy.md](./deploy.md)§3）にはSupavisorを
+追加するが、`rest`・`auth`コンテナは引き続き`db`に直結する（Supavisorを経由しない）。これは
+公式のセルフホスト構成自体がそのような設計（Supavisorは外部クライアント向けの独立した
+プーラー）であるためであり、本節の「本番ではDirect connectionを使いSupavisorと二重に挟まない」
+という方針と矛盾しない。
+
 ## 4. 認証層のさらなるポータビリティ強化案（検討中・未確定）: Auth.js
 
 §3 の表にある通り、認証は現状「JWT 発行元が Supabase 固有」という中程度のロックインが
@@ -160,6 +166,13 @@ Auth.js に担当させ、Supabase は §2 と同じく素の Postgres（ロー�
 
 現時点ではまだ **PoC 未実施・採用は未確定** であり、[overview.md](./overview.md) の確定事項表・
 [frontend.md](./frontend.md) の記述は変更していない。
+
+## 4.5 ローカル検証環境とRealtime/Edge Functions/Supavisorの扱い
+
+本番では§1・§3の方針通りRealtime・Edge Functions・Supavisorは使わない。ただし、ローカル
+Docker Compose環境では学習・検証目的でこれら3サービスを含む公式フルスタック構成を起動する
+（詳細は[deploy.md](./deploy.md)§3）。ローカルでこれらを動かせる状態にあることは、本番で
+採用する／しないの判断を変えるものではない。
 
 ---
 
