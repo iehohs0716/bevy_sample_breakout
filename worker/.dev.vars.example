@@ -1,0 +1,12 @@
+# worker/ 用（wrangler dev / drizzle-kit）。ルートの .env と同じ値をコピーする。
+# 本ファイルをコピーして worker/.dev.vars を作る（gitignore 対象）。
+
+# Supavisor（セッションモード, ルートの .env の POSTGRES_PORT）経由での接続文字列。
+# ユーザー名の形式（postgres か postgres.<POOLER_TENANT_ID> か）は実機で要確認。
+DATABASE_URL=postgres://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
+
+# api-gw（Envoy）のベースURL。/auth/v1 を含めないこと（supabase-js が内部で付加するため）。
+SUPABASE_URL=http://localhost:8000
+
+# ルートの .env の SERVICE_ROLE_KEY と同じ値をコピーする。
+SUPABASE_SERVICE_ROLE_KEY=

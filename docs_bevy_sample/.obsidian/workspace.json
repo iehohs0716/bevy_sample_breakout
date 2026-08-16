@@ -200,6 +200,8 @@
   },
   "active": "e9f2a9fe7a0dbfd1",
   "lastOpenFiles": [
+    "20260816_profiles-auto-creation-on-google-oauth-login.md",
+    "20260816_pg-net-extension-mechanism.md",
     "20260816_cloudnativepg-cnpg-overview.md",
     "20260816_kubernetes-supabase-self-hosting.md",
     "20260816_supabase-api-gateway-kong-to-envoy.md",
@@ -229,8 +231,6 @@
     "20260802_kvs-nosql-cross-service-comparison.md",
     "20260802_cloudflare-storage-products-comparison.md",
     "20260801_cloudflare-pages-local-deploy-practice.md",
-    "20260801_cloudflare-pages-deploy-considerations.md",
-    "20260801_fsd-vs-atomic-design.md",
-    "20260801_fsd-dependency-rules.md"
+    "20260801_cloudflare-pages-deploy-considerations.md"
   ]
 }

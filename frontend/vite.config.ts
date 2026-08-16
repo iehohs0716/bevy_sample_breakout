@@ -53,5 +53,10 @@ export default defineConfig({
   server: {
     // Bevy(wgpu/WebGL2) と wasm-bindgen 出力を安定動作させるための設定。
     fs: { strict: false },
+    // 自前API層(worker/, wrangler dev --port 8787)への中継。
+    // 本番は同一Cloudflare Workerに同居するため不要（doc_arch/backend.md §3）。
+    proxy: {
+      "/api": "http://localhost:8787",
+    },
   },
 });

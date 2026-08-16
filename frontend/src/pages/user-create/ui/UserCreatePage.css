@@ -1,0 +1,23 @@
+.user-create-page {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 24px;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light dark;
+  text-align: center;
+}
+
+.user-create-page h1 {
+  margin-top: 16px;
+}
+
+.user-create-page__description {
+  opacity: 0.8;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.user-create-page__error {
+  color: #d33;
+}

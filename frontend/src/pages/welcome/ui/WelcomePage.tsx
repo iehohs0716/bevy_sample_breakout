@@ -11,6 +11,9 @@ export function WelcomePage() {
       <Link to="/levels" className="welcome-page__button">
         レベルを選ぶ
       </Link>
+      <Link to="/users" className="welcome-page__link">
+        ユーザー一覧
+      </Link>
       <Link to="/oauth-sandbox" className="welcome-page__link">
         OAuthログイン サンドボックス（検証用）
       </Link>

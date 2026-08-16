@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1786885763362,
+      "tag": "0000_wakeful_doomsday",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786886263237,
+      "tag": "0001_profile_on_signup_trigger",
+      "breakpoints": true
+    }
+  ]
+}
