@@ -4,6 +4,7 @@
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
 
+use crate::common::{BrickAssets, spawn_brick};
 use crate::components::{
     Ball, Collider, CollisionSound, DeathZone, GameAssets, LivesUi, Paddle, ScoreboardUi, Velocity,
     Wall, WallLocation,
@@ -14,10 +15,9 @@ use crate::config::{
     SCOREBOARD_FONT_SIZE, SCOREBOARD_TEXT_PADDING, TEXT_COLOR, TOP_WALL,
 };
 use crate::injection::{
-    default_brick_layout, diff_brick_layout, injected_cell_size, BackgroundOverride,
-    BrickImageOverride, BrickLayoutOverride,
+    BackgroundOverride, BrickImageOverride, BrickLayoutOverride, default_brick_layout,
+    diff_brick_layout, injected_cell_size,
 };
-use crate::common::{spawn_brick, BrickAssets};
 use crate::util::contain_fit;
 
 // Add the game's entities to our world
@@ -48,15 +48,26 @@ pub fn setup(
     let (background_handle, background_size, background_area) = match background_override.0.take() {
         Some(image) => {
             let image_size = Vec2::new(image.width() as f32, image.height() as f32);
-            let fixed_image_size = contain_fit(image_size, BACKGROUND_SIZE);
-            // アスペクト比を変えないようにサイズを補正
+            let (fixed_image_size, scale) = contain_fit(image_size, BACKGROUND_SIZE);
+            let remainder_y = fixed_image_size.y % cell_size.y;
+            let cropped_display_size =
+                Vec2::new(fixed_image_size.x, fixed_image_size.y - remainder_y);
+            let crop_texture_pixels_top = remainder_y / scale;
+
             (
                 images.add(image),
-                fixed_image_size,
-                Some(Rect { min: Vec2{x:0.0, y: (fixed_image_size.y % cell_size.y) / (BACKGROUND_SIZE.x / image_size.x).min(BACKGROUND_SIZE.y / image_size.y)  }, max: image_size}),
+                cropped_display_size,
+                Some(Rect {
+                    min: Vec2::new(0.0, crop_texture_pixels_top),
+                    max: image_size,
+                }),
             )
         }
-        None => (asset_server.load(BACKGROUND_IMAGE_PATH), BACKGROUND_SIZE, None),
+        None => (
+            asset_server.load(BACKGROUND_IMAGE_PATH),
+            BACKGROUND_SIZE,
+            None,
+        ),
     };
     commands.spawn((
         Sprite {
