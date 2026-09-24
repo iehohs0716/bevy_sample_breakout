@@ -33,19 +33,30 @@ pub fn setup(
     // Camera
     commands.spawn(Camera2d);
 
+    // セルサイズは `bricks`（明示配置）が無くても JS の `cellSize` 指定を使う（2・3 経路共通。 無指定なら `BRICK_SIZE`）。
+    let cell_size = injected_cell_size().unwrap_or(BRICK_SIZE);
+
     // Background image
     // background_override.0.take()の成否によって挙動を変更
     // 成功 -> `Assets<Image>` に登録してハンドル(画像の参照)を取得する。
     // 失敗 -> 既存のリソースを使う
     // `background_was_overridden` はブロックの画像差分自動配置（後述）の発火条件判定に使う。
+    // `background_area` は画像の生ピクセル寸法（0,0起点の矩形）。`Sprite.rect` に渡す用で、
+    // デフォルト背景（`asset_server.load`）は非同期ロードでこの時点ではまだデコードが
+    // 終わっていないため `None`（サイズ不明）になる。
     let background_was_overridden = background_override.0.is_some();
-    let (background_handle, background_size) = match background_override.0.take() {
+    let (background_handle, background_size, background_area) = match background_override.0.take() {
         Some(image) => {
             let image_size = Vec2::new(image.width() as f32, image.height() as f32);
+            let fixed_image_size = contain_fit(image_size, BACKGROUND_SIZE);
             // アスペクト比を変えないようにサイズを補正
-            (images.add(image), contain_fit(image_size, BACKGROUND_SIZE)) 
+            (
+                images.add(image),
+                fixed_image_size,
+                Some(Rect { min: Vec2{x:0.0, y: (fixed_image_size.y % cell_size.y) / (BACKGROUND_SIZE.x / image_size.x).min(BACKGROUND_SIZE.y / image_size.y)  }, max: image_size}),
+            )
         }
-        None => (asset_server.load(BACKGROUND_IMAGE_PATH), BACKGROUND_SIZE),
+        None => (asset_server.load(BACKGROUND_IMAGE_PATH), BACKGROUND_SIZE, None),
     };
     commands.spawn((
         Sprite {
@@ -53,6 +64,11 @@ pub fn setup(
             // clone して渡す（Handle は Arc ベースで clone は軽量）。
             image: background_handle.clone(),
             custom_size: Some(background_size),
+            // 画像全体を使うだけなので描画結果は `rect: None`（デフォルト）と変わらないが、
+            // 生の画像サイズが分かっている場合（JS からの注入がある場合）はそれを明示する。
+            // 未確定（`None`）のときに適当な `Rect` を補って渡すと UV が壊れるため、
+            // 分からないときは必ず `None` のままにすること。
+            rect: background_area,
             ..default()
         },
         // 内接表示は水平中央・垂直上寄せ（`util::inscribed_source_rect` と同じ規約）。
@@ -164,9 +180,6 @@ pub fn setup(
     // 3. アリーナを敷き詰めるデフォルト配置
     // 差分計算には生ピクセルが要るが、`Assets<Image>` 登録後でも `images.get(&handle)` で
     // 参照を取り直せる（デコード時に CPU 側データも保持する設定にしているため）。
-    // セルサイズは `bricks`（明示配置）が無くても JS の `cellSize` 指定を使う（2・3 経路共通。
-    // 無指定なら `BRICK_SIZE`）。
-    let cell_size = injected_cell_size().unwrap_or(BRICK_SIZE);
     let brick_layout = brick_layout_override.0.take().unwrap_or_else(|| {
         let diffed = background_was_overridden
             .then(|| {
