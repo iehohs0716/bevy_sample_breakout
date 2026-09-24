@@ -22,8 +22,7 @@ pub use brick_image::{injected_brick_image, BrickImageOverride};
 
 mod brick_layout;
 pub use brick_layout::{
-    default_brick_layout, diff_brick_layout, injected_brick_layout, injected_cell_size,
-    BrickLayout, BrickLayoutOverride,
+    injected_brick_layout, injected_cell_size, BrickLayoutOverride,
 };
 
 // `breakout_config` / `decode_injected_image` はどちらも wasm32 専用なので、

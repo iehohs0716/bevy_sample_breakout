@@ -4,19 +4,18 @@
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
 
-use crate::common::{BrickAssets, spawn_brick};
+use crate::common::BrickAssets;
 use crate::components::{
-    Ball, Collider, CollisionSound, DeathZone, GameAssets, LivesUi, Paddle, ScoreboardUi, Velocity,
+    Ball, Collider, CollisionSound, DeathZone, GameAssets, Paddle, Velocity,
     Wall, WallLocation,
 };
 use crate::config::{
     BACKGROUND_IMAGE_PATH, BACKGROUND_SIZE, BALL_COLOR, BALL_DIAMETER, BALL_STARTING_POSITION,
-    BOTTOM_WALL, BRICK_SIZE, GAP_BETWEEN_PADDLE_AND_FLOOR, PADDLE_COLOR, PADDLE_SIZE, SCORE_COLOR,
-    SCOREBOARD_FONT_SIZE, SCOREBOARD_TEXT_PADDING, TEXT_COLOR, TOP_WALL,
+    BOTTOM_WALL, BRICK_SIZE, GAP_BETWEEN_PADDLE_AND_FLOOR, PADDLE_COLOR, PADDLE_SIZE, TOP_WALL,
 };
+use crate::common::brick::layout::{default_brick_layout, diff_brick_layout};
 use crate::injection::{
-    BackgroundOverride, BrickImageOverride, BrickLayoutOverride, default_brick_layout,
-    diff_brick_layout, injected_cell_size,
+    BackgroundOverride, BrickImageOverride, BrickLayoutOverride, injected_cell_size,
 };
 use crate::util::contain_fit;
 
@@ -120,53 +119,7 @@ pub fn setup(
     ));
 
     // Scoreboard + Lives
-    // 画面左上に横並びで「Lives: N   Score: M」と並べる（Lives が Score の左側）。
-    // 横並び（flex Row）のコンテナに、Lives → Score の順で子として置く。
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            top: SCOREBOARD_TEXT_PADDING,
-            left: SCOREBOARD_TEXT_PADDING,
-            column_gap: Val::Px(20.0),
-            ..default()
-        },
-        children![
-            (
-                Text::new("Lives: "),
-                TextFont {
-                    font_size: SCOREBOARD_FONT_SIZE,
-                    ..default()
-                },
-                TextColor(TEXT_COLOR),
-                LivesUi,
-                children![(
-                    TextSpan::default(),
-                    TextFont {
-                        font_size: SCOREBOARD_FONT_SIZE,
-                        ..default()
-                    },
-                    TextColor(SCORE_COLOR),
-                )],
-            ),
-            (
-                Text::new("Score: "),
-                TextFont {
-                    font_size: SCOREBOARD_FONT_SIZE,
-                    ..default()
-                },
-                TextColor(TEXT_COLOR),
-                ScoreboardUi,
-                children![(
-                    TextSpan::default(),
-                    TextFont {
-                        font_size: SCOREBOARD_FONT_SIZE,
-                        ..default()
-                    },
-                    TextColor(SCORE_COLOR),
-                )],
-            ),
-        ],
-    ));
+    crate::common::spawn_scoreboard(&mut commands);
 
     // Walls
     // 下端は反射する壁ではなく DeathZone（触れるとライフが減る領域）にする。
@@ -209,7 +162,7 @@ pub fn setup(
     // 各ブロックを配置座標に spawn する（＝起動時の初期盤面）。初回配置は setup が担い、
     // 敗北後の再スタート（GameOver→GameRestart）でのブロック作り直しは reset_game が担う。
     for (position, cell) in brick_layout.positions.iter().zip(&brick_layout.cells) {
-        spawn_brick(
+        crate::common::spawn_brick(
             &mut commands,
             &mut brick_assets,
             *position,

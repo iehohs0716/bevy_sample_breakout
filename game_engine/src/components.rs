@@ -20,7 +20,7 @@ pub use scoreboard::{Lives, LivesUi, Score, ScoreboardUi};
 
 use bevy::prelude::*;
 
-use crate::injection::BrickLayout;
+use crate::common::brick::layout::BrickLayout;
 
 #[derive(Component)]
 pub struct Paddle;

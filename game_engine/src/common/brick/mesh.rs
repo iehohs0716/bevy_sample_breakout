@@ -1,5 +1,5 @@
 //! ブロックのメッシュ・マテリアル構築。破壊された辺だけを中点変位法のギザギザ輪郭に
-//! 再構築する処理（兄弟モジュール `torn_edge` を使う）を含む、ブロック描画のうち幾何処理だけを持つ。
+//! 再構築する処理を含む、ブロック描画のうち幾何処理だけを持つ。
 //! `spawn_brick` / `redraw_broken_bricks`（親モジュール）からのみ使うため非公開のまま。
 
 use bevy::asset::RenderAssetUsages;
@@ -7,6 +7,8 @@ use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 
 use crate::components::{BrickCell, BrickFill, BrokenEdges};
+use crate::config::{TEAR_DEPTH, TEAR_ROUGHNESS};
+use crate::util::{midpoint_displace, mix_seeds, SeededRng};
 
 pub(super) fn build_brick_material(fill: &BrickFill) -> ColorMaterial {
     match fill {
@@ -62,9 +64,9 @@ pub(crate) fn build_brick_mesh(
         let end = corners[(i + 1) % 4];
         boundary.push(start);
         if edge_broken[i] {
-            // 破れた辺だけ、中点変位法のギザギザ輪郭に置き換える（実装は `torn_edge` モジュール）。
+            // 破れた辺だけ、中点変位法のギザギザ輪郭に置き換える。
             // この中で、boundaryに追加の頂点が追加されていく
-            super::torn_edge::push_torn_edge(cell, i as u32, start, end, &mut boundary);
+            push_torn_edge(cell, i as u32, start, end, &mut boundary);
         }
     }
 
@@ -176,5 +178,37 @@ mod tests {
                 (i + 1) % n
             );
         }
+    }
+}
+
+/// ブロックの盤面座標と辺番号から決定的な種を作る。同じセル・同じ辺なら常に同じギザギザになる。
+fn seed_for(cell: BrickCell, edge_index: u32) -> u32 {
+    mix_seeds(cell.row as u32, cell.col as u32, edge_index)
+}
+
+/// `start`→`end` の辺を破れたギザギザ輪郭に変え、両端を除く変位点だけを `out` に積む
+/// （両端 `start`/`end` は呼び出し側が管理する前提）。`cell`・`edge_index` から決定的な種を
+/// 作るので、同じセル・同じ辺なら常に同じ形になる。振れ幅・分割段数は `config` の
+/// `TEAR_ROUGHNESS` / `TEAR_DEPTH` に従う。
+fn push_torn_edge(cell: BrickCell, edge_index: u32, start: Vec2, end: Vec2, out: &mut Vec<Vec2>) {
+    let mut rng = SeededRng::new(seed_for(cell, edge_index));
+    midpoint_displace(start, end, TEAR_DEPTH, TEAR_ROUGHNESS, &mut rng, out);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 同じセル・同じ辺なら常に同じギザギザになる（決定的）ことを確認する。
+    #[test]
+    fn seed_for_is_deterministic_per_cell_and_edge() {
+        let cell = BrickCell { row: 2, col: 9 };
+        assert_eq!(seed_for(cell, 0), seed_for(cell, 0));
+        assert_ne!(seed_for(cell, 0), seed_for(cell, 1), "辺が違えばseedも違うはず");
+        assert_ne!(
+            seed_for(cell, 0),
+            seed_for(BrickCell { row: 9, col: 2 }, 0),
+            "セルが違えばseedも違うはず"
+        );
     }
 }

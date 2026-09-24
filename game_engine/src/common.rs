@@ -2,6 +2,9 @@
 //! `build_brick_mesh` は `systems::update::brick::redraw_broken_bricks`（実際の Bevy system）だけが
 //! 追加で必要とするため、`pub(crate)` でクレート内にだけ公開している。
 
-mod brick;
+pub mod brick;
 pub use brick::{spawn_brick, BrickAssets};
 pub(crate) use brick::build_brick_mesh;
+
+pub mod scoreboard;
+pub use scoreboard::spawn_scoreboard;

@@ -95,3 +95,52 @@ pub fn average_color(image: &Image, rect: Rect) -> Vec4 {
         sum / count as f32
     }
 }
+
+/// 決定的な疑似乱数（xorshift32）。同じシードからは常に同じ乱数列が得られる。
+pub struct SeededRng(u32);
+
+impl SeededRng {
+    pub fn new(seed: u32) -> Self {
+        Self(seed | 1) // 0 だとxorshiftが退化するので奇数化
+    }
+
+    pub fn next_u32(&mut self) -> u32 {
+        let mut x = self.0;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        self.0 = x;
+        x
+    }
+
+    pub fn next_unit(&mut self) -> f32 {
+        (self.next_u32() >> 8) as f32 / (1u32 << 24) as f32
+    }
+}
+
+/// 中点変位法。`a`→`b` の辺の間に、`depth` 段まで再帰的に変位点を差し込んで `out` に積む
+/// （`a` 自身と `b` 自身は積まない＝呼び出し側が両端を管理する前提）。再帰ごとに辺長が半分に
+/// なるので振れ幅（`amplitude`）も自動的に減衰する。
+pub fn midpoint_displace(a: Vec2, b: Vec2, depth: u32, roughness: f32, rng: &mut SeededRng, out: &mut Vec<Vec2>) {
+    if depth == 0 {
+        return;
+    }
+    let mid = (a + b) / 2.0;
+    let edge = b - a;
+    let normal = Vec2::new(-edge.y, edge.x).normalize_or_zero();
+    let amplitude = edge.length() * roughness;
+    let offset = (rng.next_unit() * 2.0 - 1.0) * amplitude;
+    let displaced = mid + normal * offset;
+
+    midpoint_displace(a, displaced, depth - 1, roughness, rng, out);
+    out.push(displaced);
+    midpoint_displace(displaced, b, depth - 1, roughness, rng, out);
+}
+
+/// 複数の数値を混ぜ合わせて1つのシード値（ハッシュ）を生成する純粋な数学ロジック。
+pub fn mix_seeds(a: u32, b: u32, c: u32) -> u32 {
+    a.wrapping_mul(73856093)
+        ^ b.wrapping_mul(19349663)
+        ^ c.wrapping_mul(83492791)
+        ^ 0x9E3779B9
+}
