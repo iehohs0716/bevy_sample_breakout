@@ -9,50 +9,35 @@ use bevy::prelude::*;
 /// `content`（例: 画像のピクセル寸法）を `container`（例: アリーナ）に、アスペクト比を
 /// 保ったまま内接させたときの表示寸法を返す（いわゆる "contain" フィット）。
 /// 比率が合わない分は余白になる（呼び出し側で黒く塗る前提）。
-pub fn contain_fit(content: Vec2, container: Vec2) -> Vec2 {
+pub fn contain_fit(content: Vec2, container: Vec2) -> (Vec2, f32) {
     let scale = (container.x / content.x).min(container.y / content.y);
-    content * scale
+    (content * scale, scale)
 }
 
-/// 「画像 1 枚を、引き伸ばさずコンテナ（例: アリーナ）に内接表示した」と仮定したとき、
-/// コンテナ座標系のある矩形領域（例: 1 個のブロックが占める範囲）が、画像のどのピクセル範囲を
-/// 覆っているかを求める。呼び出し側は主に「表示上のこの範囲は、元画像のここを切り出せば描ける」
-/// を知りたいときに使う（ブロックのテクスチャ切り出しや、2 画像を同じ領域で比較する差分判定など）。
-///
-/// 内接表示の位置は**水平方向は中央寄せ・垂直方向は上寄せ**（コンテナの上端に画像の上端を
-/// 合わせる）。画像が縦長（`container` よりアスペクト比が小さい）ならコンテナの高さいっぱいに
-/// 表示されるため上寄せと中央寄せで結果は変わらないが、画像が横長（`container` よりアスペクト比が
-/// 大きい）だと表示は幅いっぱいになり、余った高さぶんが下側だけの余白になる（上下に分かれた
-/// 余白にはならない）。ブロック自動配置（差分判定）はアリーナ上部だけを対象にする設計のため、
-/// 横長画像を使う場合は絵の上端がアリーナ上端に揃っていた方が、その対象範囲との整合が取れる。
-///
-/// # 引数（すべて同じ「コンテナ中心を原点、y 上向き」の座標系）
-/// - `region_center` / `region_size`: 知りたい矩形領域の**中心座標**と**幅・高さ**
-///   （例: ブロック 1 個ならその中心位置とセルサイズ）。
-/// - `container`: 画像を内接させる枠の全体サイズ（例: アリーナの幅・高さ）。
-/// - `image_size`: 元画像のピクセル寸法（幅・高さ）。`container` とアスペクト比が異なる場合、
-///   画像は `contain_fit` で縮小され、コンテナ内に余白（レターボックス）ができる。
+/// ブロックなど、ゲーム画面上のオブジェクトの位置（`region_center`）とサイズ（`region_size`）を指定すると、
+/// それが背景画像の「どのピクセル範囲」に乗っているかを計算して返す関数です（テクスチャの切り出しなどに使用）。
+/// 
+/// 画像はコンテナに対して「アスペクト比維持・上部中央寄せ」で内接配置される前提で計算され、
+/// 画面座標（Y上向き）から画像ピクセル座標（Y下向き・左上原点）への変換も行う。
 ///
 /// # 返り値
-/// 画像内のピクセル矩形（`min`/`max` は画像の左上を原点とするピクセル座標）。
-/// `region_center`/`region_size` の矩形が、画像を内接表示した範囲からはみ出す場合は
-/// `None`（＝そこは余白で画像が存在しない。呼び出し側で黒く塗るか無視する）。
-///
-/// コンテナ座標は y が上向きだが画像のピクセル座標は y が下向き（左上原点）なので、
-/// 内部で上下を反転させて対応づけている。
+/// 画像内のピクセル矩形。指定領域が画像からはみ出している場合は `None` を返す。
 pub fn inscribed_source_rect(
     region_center: Vec2,
     region_size: Vec2,
     container: Vec2,
     image_size: Vec2,
 ) -> Option<Rect> {
-    let display = contain_fit(image_size, container);
-    // 水平方向は中央寄せなので [-half_x, half_x]。
+    let (display, scale) = contain_fit(image_size, container);
+
+    // セルサイズの整数倍に高さを収めるための端数削り（トップクロップ）
+    let remainder_y = display.y % region_size.y;
+    let cropped_display_y = display.y - remainder_y;
+    let crop_texture_pixels_top = remainder_y / scale;
+
     let half_x = display.x / 2.0;
-    // 垂直方向は上寄せ。コンテナ上端（`container.y / 2`）に画像の上端を揃え、
-    // 表示高さぶんだけ下端が決まる。
     let top_y = container.y / 2.0;
-    let bottom_y = top_y - display.y;
+    let bottom_y = top_y - cropped_display_y;
 
     // 知りたい領域の四辺（コンテナ座標系）。
     let left = region_center.x - region_size.x / 2.0;
@@ -66,11 +51,16 @@ pub fn inscribed_source_rect(
     }
 
     // 内接表示範囲の中での位置を 0..1 の割合に直し、画像のピクセル数を掛ける。
-    let u_min = (left + half_x) / display.x * image_size.x;
-    let u_max = (right + half_x) / display.x * image_size.x;
-    // 内接表示の上端 (y=top_y) を画像の上端 (ピクセル y=0) に対応させて上下反転する。
-    let v_min = (top_y - top) / display.y * image_size.y;
-    let v_max = (top_y - bottom) / display.y * image_size.y;
+    let u_min = ((left + half_x) / display.x * image_size.x).clamp(0.0, image_size.x);
+    let u_max = ((right + half_x) / display.x * image_size.x).clamp(0.0, image_size.x);
+
+    let usable_texture_height = image_size.y - crop_texture_pixels_top;
+    let v_min = (crop_texture_pixels_top
+        + (top_y - top) / cropped_display_y * usable_texture_height)
+        .clamp(0.0, image_size.y);
+    let v_max = (crop_texture_pixels_top
+        + (top_y - bottom) / cropped_display_y * usable_texture_height)
+        .clamp(0.0, image_size.y);
 
     Some(Rect::new(u_min, v_min, u_max, v_max))
 }
